@@ -1,0 +1,12 @@
+# Dependency directory
+node_modules/
+
+# Sensitive files
+.env
+config.json
+
+# Logs
+*.log
+
+# Operating System files
+.DS_Store
