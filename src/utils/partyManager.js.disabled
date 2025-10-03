@@ -1,0 +1,166 @@
+// src/utils/partyManager.js
+
+const fs = require('fs');
+const path = require('path');
+const Party = require('../models/Party');
+
+const DATA_PATH = path.join(__dirname, '../../data/parties.json');
+
+// In-memory map of leaderId → Party instance
+const parties = new Map();
+
+// ✅ Load parties from disk
+function loadParties() {
+  if (!fs.existsSync(DATA_PATH)) {
+    console.log('[PartyManager] No saved parties found.');
+    return;
+  }
+
+  try {
+    const raw = fs.readFileSync(DATA_PATH);
+    const data = JSON.parse(raw);
+
+    for (const leaderId in data) {
+      const rawParty = data[leaderId];
+      const party = new Party(rawParty.leaderId);
+      party.members = Array.isArray(rawParty.members) ? rawParty.members : [];
+      party.invited = Array.isArray(rawParty.invited) ? rawParty.invited : [];
+      parties.set(party.leaderId, party);
+    }
+
+    console.log(`[PartyManager] ✅ Loaded ${parties.size} parties from disk`);
+  } catch (err) {
+    console.error('[PartyManager] ❌ Failed to load parties:', err);
+  }
+}
+
+// ✅ Save parties to disk
+function saveParties() {
+  const obj = {};
+  for (const [leaderId, party] of parties.entries()) {
+    obj[leaderId] = party.toJSON();
+  }
+
+  try {
+    fs.writeFileSync(DATA_PATH, JSON.stringify(obj, null, 2));
+  } catch (err) {
+    console.error('[PartyManager] ❌ Failed to save parties:', err);
+  }
+}
+
+// ✅ Create a new party (fails if user already in a party)
+function createParty(leaderId) {
+  if (getPartyByUser(leaderId)) return null;
+
+  const party = new Party(leaderId);
+  parties.set(leaderId, party);
+  saveParties();
+  return party;
+}
+
+// ✅ Disband a party by leader ID
+function disbandParty(leaderId) {
+  const success = parties.delete(leaderId);
+  if (success) saveParties();
+  return success;
+}
+
+// ✅ Get a party by any user (leader or member)
+function getPartyByUser(userId) {
+  for (const party of parties.values()) {
+    if (party.isMember(userId)) return party;
+  }
+  return null;
+}
+
+// ✅ Get a party by leader ID
+function getPartyByLeader(leaderId) {
+  return parties.get(leaderId) || null;
+}
+
+// ✅ Remove user from party
+function leaveParty(userId) {
+  const party = getPartyByUser(userId);
+  if (!party) return false;
+
+  const wasLeader = party.isLeader(userId);
+  const hasMembersLeft = party.removeMember(userId);
+
+  if (!hasMembersLeft) {
+    // Party empty → disband
+    disbandParty(party.leaderId);
+    return 'disbanded';
+  }
+
+  // If leader left but party still has members, promote first member
+  if (wasLeader && party.size > 0) {
+    const newLeaderId = party.leaderId;
+    parties.delete(userId);
+    parties.set(newLeaderId, party);
+  }
+
+  saveParties();
+  return 'left';
+}
+
+// ✅ Transfer leadership
+function promoteLeader(currentLeaderId, newLeaderId) {
+  const party = getPartyByLeader(currentLeaderId);
+  if (!party || !party.isMember(newLeaderId)) return false;
+
+  party.promoteNewLeader(newLeaderId);
+  parties.delete(currentLeaderId);
+  parties.set(newLeaderId, party);
+  saveParties();
+  return true;
+}
+
+// ✅ Invite a user
+function inviteToParty(leaderId, targetId) {
+  const party = getPartyByLeader(leaderId);
+  if (!party) return false;
+
+  const success = party.invite(targetId);
+  if (success) saveParties();
+  return success;
+}
+
+// ✅ Accept an invite
+function acceptInvite(userId, leaderId) {
+  const party = getPartyByLeader(leaderId);
+  if (!party) return false;
+
+  const success = party.addMember(userId);
+  if (success) saveParties();
+  return success;
+}
+
+// ✅ Check if party is eligible for a match (minSize ≤ party.size ≤ maxSize)
+function isEligibleForMatch(userId, minSize = 1, maxSize = Infinity) {
+  const party = getPartyByUser(userId);
+  return party ? party.isEligible(minSize, maxSize) : false;
+}
+
+// ✅ List all parties (debug)
+function listParties() {
+  return Array.from(parties.values()).map(party => ({
+    leaderId: party.leaderId,
+    members: party.members,
+    invited: party.invited
+  }));
+}
+
+module.exports = {
+  loadParties,
+  saveParties,
+  createParty,
+  disbandParty,
+  getPartyByUser,
+  getPartyByLeader,
+  leaveParty,
+  promoteLeader,
+  inviteToParty,
+  acceptInvite,
+  listParties,
+  isEligibleForMatch
+};

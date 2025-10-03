@@ -1,0 +1,27 @@
+{
+  "name": "luckyrankedbedwarsbot",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "nodemon --ignore src/queue/activeGames.json src/index.js",
+    "deploy": "nodemon src/deploy-commands.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "canvacord": "^6.0.2",
+    "canvas": "^3.2.0",
+    "crypto": "^1.0.1",
+    "discord.js": "^14.22.0",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "fs": "^0.0.1-security",
+    "js-yaml": "^4.1.0",
+    "nodemon": "^3.1.10",
+    "path": "^0.12.7",
+    "yaml": "^2.8.1"
+  }
+}
