@@ -20,6 +20,11 @@ module.exports = {
       option.setName('user')
         .setDescription('The user to view')
         .setRequired(false)
+    )
+    .addStringOption(option =>
+      option.setName('username')
+        .setDescription('The Minecraft username to view')
+        .setRequired(false)
     ),
 
   async execute(interaction) {
@@ -28,6 +33,7 @@ module.exports = {
     const targetUser = interaction.options.getUser('user');
     const minecraftUsername = interaction.options.getString('username');
     const guild = interaction.guild;
+    const verifiedRoleId = process.env.VERIFIED_ROLE_ID || '1401289452633985086';
 
     let member = null;
     let playerData = null;
@@ -46,20 +52,19 @@ module.exports = {
     } else {
       // 2. Search by Discord user
       const user = targetUser || interaction.user;
-
-      if (!member || !member.roles.cache.has('1401289452633985086')) {
-  return interaction.editReply({ content: '❌ Unable to find that user data' });
-}
       
       // ❌ Block if target is the bot itself
       if (user.id === process.env.CLIENT_ID) {
         return interaction.editReply({ content: '❌ Unable to find that user data' });
       }
 
+      member = await guild.members.fetch(user.id).catch(() => null);
       
+      if (!member || !member.roles.cache.has(verifiedRoleId)) {
+        return interaction.editReply({ content: '❌ This user is not verified or has no linked account.' });
+      }
 
       playerData = await PlayerModel.findOne({ userId: user.id });
-      member = await guild.members.fetch(user.id).catch(() => null);
       
       if (!playerData && !member) {
         return interaction.editReply({ content: '❌ Unable to find that user data' });
