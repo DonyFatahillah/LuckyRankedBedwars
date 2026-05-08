@@ -1,0 +1,31 @@
+// src/commands/general/ticket.js
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('ticket')
+    .setDescription('Open the support panel (for reports, appeals, etc)'),
+
+  async execute(interaction) {
+    const embed = new EmbedBuilder()
+      .setTitle('🎟️ Support')
+      .setDescription([
+        '🖥️ **General** → Ask a question and get help',
+        '👤 **Report** → Report a player for a violation',
+        '⚖️ **Appeals** → Appeal a strike, mute, or ban',
+        '🎯 **Scoring** → Dispute the outcome of a Ranked game',
+        '🛒 **Store** → For store-related or payment issues'
+      ].join('\n'))
+      .setColor(0x2F3136);
+
+    const buttons = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('ticket:general').setLabel('🖥️').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('ticket:report').setLabel('👤').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('ticket:appeals').setLabel('⚖️').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('ticket:scoring').setLabel('🎯').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('ticket:store').setLabel('🛒').setStyle(ButtonStyle.Secondary),
+    );
+
+    await interaction.reply({ embeds: [embed], components: [buttons], ephemeral: true });
+  }
+};

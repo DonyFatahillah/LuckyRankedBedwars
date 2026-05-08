@@ -1,0 +1,49 @@
+3v3:
+  allowed:
+    - Fireballs
+    - Bridge Eggs
+    - Ladders
+    - Invis
+    - Diamond Armor (only 1)
+    - Sponge
+  after_emerald_ii:
+    - Jump Potion
+    - Speed Potion
+  after_any_bed_break:
+    - TNT
+    - Side Bases
+    - Ender Pearl
+    - Knockback Stick
+    - Water (At your own base)
+    - Diamond Armor (Full Team)
+  banned:
+    - Bows & Arrows
+    - Pop Up Towers	
+    - Iron Golems
+    - Obsidian
+    - Silverfish
+
+4v4:
+  allowed:
+    - Fireballs
+    - Bridge Eggs
+    - Ladders
+    - Invis
+    - Diamond Armor (only 2)
+    - Sponge
+  after_emerald_ii:
+    - Jump Potion
+    - Speed Potion
+  after_any_bed_break:
+    - TNT
+    - Side Bases
+    - Ender Pearl
+    - Knockback Stick
+    - Water (At your own base)
+    - Diamond Armor (Full Team)
+  banned:
+    - Bows & Arrows
+    - Pop Up Towers	
+    - Iron Golems
+    - Obsidian
+    - Silverfish

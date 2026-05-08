@@ -1,0 +1,22 @@
+{
+  "SS7310": {
+    "playerId": "624189166930100224",
+    "channelId": "1423336522156998746",
+    "reason": "test",
+    "media": "https://cdn.discordapp.com/ephemeral-attachments/1423323457042649120/1423336514183762122/pfp.png?ex=68dff0ed&is=68de9f6d&hm=208462c598b696005c1e28e68a661cfddb8e7cadcc06fdba9c2c16c4a33d5727&",
+    "link": null,
+    "createdAt": 1759420271744,
+    "status": "pending"
+  },
+  "SS8301": {
+    "playerId": "624189166930100224",
+    "channelId": "1423336710976311316",
+    "reason": "test",
+    "media": "https://cdn.discordapp.com/ephemeral-attachments/1423323457042649120/1423336703736811663/pfp.png?ex=68dff11a&is=68de9f9a&hm=82188b7b7f19de30bd5759655a5b9e57dc601698c1579bf7f3ebfeef3b3da7f5&",
+    "link": null,
+    "createdAt": 1759420316612,
+    "status": "closed",
+    "voiceId": "1423336870766575616",
+    "staffId": "942069510423343105"
+  }
+}

@@ -1,0 +1,418 @@
+// src/queue/queueManager.js
+const fs = require('fs');
+const path = require('path');
+const yaml = require('js-yaml');
+const { ChannelType, PermissionFlagsBits } = require('discord.js');
+require('dotenv').config({ path: path.join(__dirname, '/../.env') });
+const mapPicker = require('../utils/mapPicker');
+const ActiveGameModel = require('../models/ActiveGameSchema');
+
+const ACTIVE_GAMES_PATH = path.join(__dirname, '../../data/activeGames.json');
+const RULES_YAML_PATH = path.join(__dirname, '../../data/queueRules.yaml');
+
+let _activeGames = new Map();
+let _queueRules = {};
+
+try {
+  const raw = fs.readFileSync(RULES_YAML_PATH, 'utf8');
+  _queueRules = yaml.load(raw);
+} catch (err) {
+  console.warn('[QueueRules] Failed to load YAML rules:', err.message);
+}
+
+const { logMatch, sendLogToStaffChannel } = require('../utils/matchLogger');
+const Player = require('../models/Player');
+const partySystem = require('../utils/partySystem');
+const { publishMatch } = require('../utils/redisClient');
+
+// 🧠 Startup queue check
+async function checkAllQueueChannelsOnStartup(client) {
+  const eloQueues = require('../config/eloQueues');
+  const guildId = process.env.GUILD_ID;
+  if (!guildId) return;
+  const guild = await client.guilds.fetch(guildId).catch(() => null);
+  if (!guild) return;
+
+  const allChannels = await guild.channels.fetch();
+
+  for (const queue of eloQueues) {
+    const { voiceChannelId, type } = queue;
+    if (!voiceChannelId || !type) continue;
+
+    const voiceChannel = allChannels.get(voiceChannelId);
+    if (!voiceChannel || !voiceChannel.isVoiceBased()) continue;
+
+    const members = [...voiceChannel.members.values()];
+    if (members.length === 0) continue;
+
+    console.log(`[StartupQueue] Found ${members.length} in queue ${type} → ${voiceChannel.name}`);
+
+    try {
+      const handlerPath = `./queue${type}`;
+      const queueHandler = require(handlerPath);
+      if (typeof queueHandler.handleQueue === 'function') {
+        await queueHandler.handleQueue(guild, members);
+      } else {
+        console.warn(`[StartupQueue] Missing handleQueue() in ${handlerPath}`);
+      }
+    } catch (err) {
+      console.error(`[StartupQueue] Failed to handle queue type ${type}:`, err);
+    }
+  }
+}
+
+function generateHexCode() {
+  let hex;
+  do {
+    hex = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0').toUpperCase();
+  } while (_activeGames.has(hex));
+  return hex;
+}
+
+function getEligiblePlayers(members, targetCount, maxPartySize = 4) {
+  const soloMembers = [];
+  const partyGroups = [];
+  const memberMap = new Map(members.map(m => [m.id, m]));
+  const processedParties = new Set();
+
+  for (const member of members) {
+    const party = partySystem.getPartyByUser(member.id);
+
+    if (party && !processedParties.has(party.leaderId)) {
+      const presentMembers = party.members
+        .map(id => memberMap.get(id))
+        .filter(Boolean);
+
+      if (presentMembers.length === 0) continue;
+      if (presentMembers.length > maxPartySize) {
+        for (let i = 0; i < presentMembers.length; i += maxPartySize) {
+          partyGroups.push(presentMembers.slice(i, i + maxPartySize));
+        }
+      } else {
+        partyGroups.push(presentMembers);
+      }
+
+      processedParties.add(party.leaderId);
+
+    } else if (!party) {
+      soloMembers.push(member);
+    }
+  }
+
+  shuffle(partyGroups);
+  shuffle(soloMembers);
+  partyGroups.sort((a, b) => b.length - a.length);
+
+  const combined = [];
+  let total = 0;
+
+  for (const group of partyGroups) {
+    if (total + group.length <= targetCount) {
+      combined.push(...group);
+      total += group.length;
+    }
+    if (total === targetCount) break;
+  }
+
+  if (total < targetCount) {
+    const needed = targetCount - total;
+    combined.push(...soloMembers.slice(0, needed));
+  }
+
+  return combined;
+}
+
+function shuffle(array) {
+  return array.sort(() => Math.random() - 0.5);
+}
+
+// -------------------------
+// Match creation
+// -------------------------
+async function createMatch(guild, players, teamSize, options = {}) {
+  if (!players || players.length === 0) return;
+
+  const totalRequired = teamSize * 2;
+  players = getEligiblePlayers(players, totalRequired, teamSize);
+  if (players.length < totalRequired) return;
+
+  const hex = generateHexCode();
+  const team1 = players.slice(0, teamSize);
+  const team2 = players.slice(teamSize, teamSize * 2);
+  const teams = [team1, team2];
+
+  const captains = await Promise.all(
+    teams.map(async team => {
+      const instances = await Promise.all(team.map(m => new Player(m)));
+      return instances.reduce((top, p) => (p.elo > top.elo ? p : top), instances[0]).member.id;
+    })
+  );
+
+  const rules = getRulesForMatchType(teamSize);
+
+  try {
+    const category = await guild.channels.create({
+      name: `#${hex} Game`,
+      type: ChannelType.GuildCategory,
+      permissionOverwrites: getPermissionOverwrites(players, [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory
+      ], true)
+    });
+
+    const textChannel = await guild.channels.create({
+      name: `${hex}-chat`,
+      type: ChannelType.GuildText,
+      parent: category.id,
+      permissionOverwrites: getPermissionOverwrites(players, [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory
+      ], true)
+    });
+
+    const vcs = [];
+    for (let i = 0; i < teams.length; i++) {
+      const vc = await guild.channels.create({
+        name: `#${hex} Team ${i + 1}`,
+        type: ChannelType.GuildVoice,
+        parent: category.id,
+        permissionOverwrites: getPermissionOverwrites(teams[i], PermissionFlagsBits.Connect, false)
+      });
+      vcs.push(vc.id);
+    }
+
+    const teamMentions = teams.map(team => team.map(m => `<@${m.id}>`));
+    const teamCaptainsMention = captains.map(id => `<@${id}>`);
+    const randomMap = mapPicker.getRandomMap();
+    const mapInfo = `🗺️ **Map:** ${randomMap}\n\n`;
+
+    const playerInstances = await Promise.all(
+      teams.flat().map(async m => new Player(m))
+    );
+
+    const partyInviteLines = playerInstances.map(player =>
+      `\`/party invite ${player.ingameUsername || player.discordUsername}\``
+    ).join('\n');
+
+    const partyTip = 
+      mapInfo +
+      `💡 **Party Commands Tip:**\n` +
+      `\`/party create\`\n` +
+      `\`/party slot ${players.length}\` (based on queue size)\n` +
+      partyInviteLines +
+      `\n\`/host\``;
+
+    const embeds = [
+      {
+        title: `Welcome to Match #${hex}`,
+        description:
+          `Use \`/submit <screenshot> <winbreakername> <topkills> <topkillamount> [losebedbreaker]\` when your game is done.\n\n` +
+          `👑 **Team Captains:**\n• Team 1: ${teamCaptainsMention[0]}\n• Team 2: ${teamCaptainsMention[1]}\n\n` +
+          `👥 **Teams:**\n• **Team 1:** ${teamMentions[0].join(', ')}\n• **Team 2:** ${teamMentions[1].join(', ')}\n\n` +
+          `📜 **Match Rules:**\n• Note: ${rules.note}\n\n` +
+          `${rules.rulesEmbed || ''}`+ partyTip,
+        color: 0x00ff00
+      }
+    ];
+
+    await textChannel.send({ embeds });
+    await textChannel.send(players.map(p => `<@${p.id}>`).join(' '));
+    await movePlayersToVoiceChannels(guild, teams, category.id);
+
+    const matchData = {
+      gameId: hex,
+      players: players.map(p => p.id),
+      teamA: teams[0].map(p => p.id),
+      teamB: teams[1].map(p => p.id),
+      captainIds: captains,
+      categoryId: category.id,
+      textChannelId: textChannel.id,
+      voiceAId: vcs[0],
+      voiceBId: vcs[1],
+      queueType: `${teamSize}v${teamSize}`,
+      map: randomMap,
+      startedAt: Date.now(),
+      status: 'pending',
+      rules,
+      isPartyMatch: options.isPartyMatch || false
+    };
+
+    await logMatch(hex, matchData.teamA, matchData.teamB, { 
+      queueType: matchData.queueType, 
+      mapName: matchData.map 
+    });
+    await setActiveGame(hex, matchData);
+
+    // Publish to Redis for Minecraft Bridge
+    const teamAData = teams[0].map(m => {
+      const p = new Player(m);
+      return { id: p.id, ign: p.ingameUsername || p.discordUsername, elo: p.elo };
+    });
+    const teamBData = teams[1].map(m => {
+      const p = new Player(m);
+      return { id: p.id, ign: p.ingameUsername || p.discordUsername, elo: p.elo };
+    });
+
+    await publishMatch({
+      matchId: hex,
+      queueType: matchData.queueType,
+      teamA: teamAData,
+      teamB: teamBData
+    }).catch(err => console.error('[Redis-Bridge] Failed to publish:', err));
+
+    if (process.env.MATCH_LOGS_ID) {
+      await sendLogToStaffChannel(guild.client, guild.id, hex, process.env.MATCH_LOGS_ID);
+    }
+
+  } catch (err) {
+    console.error(`[createMatch] Failed to create match #${hex}:`, err);
+  }
+}
+
+// -------------------------
+// Rules
+// -------------------------
+function getRulesForMatchType(teamSize) {
+  if (teamSize === 3 || teamSize === 4) {
+    const section = _queueRules[`${teamSize}v${teamSize}`];
+    if (!section) return fallbackRules(teamSize);
+
+    const formatSection = (title, list) =>
+      list?.length ? `**${title}:**\n> ${list.map(i => i.trim()).join('\n> ')}\n` : '';
+
+    const rulesText = [
+      formatSection('✅ Allowed', section.allowed),
+      formatSection('🕒 After Emerald II', section.after_emerald_ii),
+      formatSection('💥 After Any Bed Break', section.after_any_bed_break),
+      formatSection('⛔ Banned', section.banned)
+    ].join('\n');
+
+    return {
+      format: `${teamSize}v${teamSize}`,
+      map: `Random ${teamSize}v${teamSize} Map`,
+      rounds: 1,
+      bedBreakEnabled: true,
+      mvpBonus: true,
+      note: 'Submit results with `/submit`.',
+      rulesEmbed: rulesText
+    };
+  }
+  return fallbackRules(teamSize);
+}
+
+function fallbackRules(teamSize) {
+  return {
+    format: teamSize === 1 ? '1v1' : `${teamSize}v${teamSize}`,
+    map: `Random ${teamSize}v${teamSize} Map`,
+    rounds: 1,
+    bedBreakEnabled: true,
+    mvpBonus: true,
+    note: 'Standard rules apply.',
+    rulesEmbed: ''
+  };
+}
+
+// -------------------------
+// Permissions
+// -------------------------
+function getPermissionOverwrites(players, permissions, isTextChannel = false) {
+  const perms = Array.isArray(permissions) ? permissions : [permissions];
+  const overwrites = [];
+  const everyoneRoleId = players[0].guild.roles.everyone.id;
+
+  if (isTextChannel) {
+    overwrites.push({ id: everyoneRoleId, deny: [PermissionFlagsBits.ViewChannel] });
+  } else {
+    overwrites.push({ id: everyoneRoleId, allow: [PermissionFlagsBits.ViewChannel], deny: [PermissionFlagsBits.Connect] });
+  }
+
+  return overwrites.concat(players.map(p => ({ id: p.id, allow: perms })));
+}
+
+// -------------------------
+// Move players
+// -------------------------
+async function movePlayersToVoiceChannels(guild, teams, categoryId) {
+  const allChannels = await guild.channels.fetch();
+  const voiceChannels = Array.from(allChannels.values())
+    .filter(c => c.parentId === categoryId && c.type === ChannelType.GuildVoice)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  teams.forEach((team, i) => team.forEach(p => p.targetVC = voiceChannels[i]));
+
+  for (const team of teams) {
+    for (const p of team) {
+      const member = await guild.members.fetch(p.id).catch(() => null);
+      if (member && p.targetVC) await member.voice.setChannel(p.targetVC).catch(() => {});
+    }
+  }
+}
+
+// -------------------------
+// Persistence
+// -------------------------
+function saveActiveGames() {
+  fs.writeFileSync(ACTIVE_GAMES_PATH, JSON.stringify(Array.from(_activeGames.entries()), null, 2));
+}
+
+async function loadActiveGames() {
+  if (!fs.existsSync(ACTIVE_GAMES_PATH)) return;
+  try {
+    const data = JSON.parse(fs.readFileSync(ACTIVE_GAMES_PATH));
+    _activeGames = new Map(data);
+    console.log(`[ActiveGames] Loaded ${_activeGames.size} games.`);
+  } catch (err) {
+    console.error(`[ActiveGames] Failed to load:`, err);
+    _activeGames = new Map();
+  }
+}
+
+async function setActiveGame(gameId, data) {
+  _activeGames.set(gameId, data);
+  saveActiveGames();
+
+  // Mongo Sync
+  try {
+    await ActiveGameModel.findOneAndUpdate(
+      { gameId },
+      data,
+      { upsert: true }
+    );
+  } catch (err) {
+    console.error(`[ActiveGames-Mongo] Failed to save game #${gameId}:`, err);
+  }
+}
+
+async function updateActiveGame(gameId, updateData) {
+  const match = _activeGames.get(gameId);
+  if (!match) return;
+  await setActiveGame(gameId, { ...match, ...updateData });
+}
+
+async function deleteActiveGame(gameId) {
+  _activeGames.delete(gameId);
+  saveActiveGames();
+
+  try {
+    await ActiveGameModel.deleteOne({ gameId });
+  } catch (err) {
+    console.error(`[ActiveGames-Mongo] Failed to delete game #${gameId}:`, err);
+  }
+}
+
+function getActiveGames() {
+  return _activeGames;
+}
+
+module.exports = {
+  getActiveGames,
+  createMatch,
+  setActiveGame,
+  updateActiveGame,
+  deleteActiveGame,
+  loadActiveGames,
+  getEligiblePlayers,
+  checkAllQueueChannelsOnStartup
+};
