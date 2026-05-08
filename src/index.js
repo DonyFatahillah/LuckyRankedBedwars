@@ -42,8 +42,6 @@
 
   console.log('[Startup] Bot is initializing...');
   console.log('V:0.2.1')
-  console.log('test new messages')
-  console.log('new message')
 
   const client = new Client({
     intents: [
