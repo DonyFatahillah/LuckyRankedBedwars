@@ -8,6 +8,7 @@ const { logStaffCommand } = require('../../utils/staffLogger');
 const { getActiveGames, deleteActiveGame } = require('../../queue/queueManager');
 const Player = require('../../models/Player');
 const { updateMatchStatus, getLogs, editLogEmbed } = require('../../utils/matchLogger');
+const { publishMatch } = require('../../utils/redisClient');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
@@ -89,6 +90,9 @@ module.exports = {
       }
       deleteActiveGame(gameId);
       removedFromActive = true;
+      
+      // Notify Minecraft plugin
+      await publishMatch({ matchId: gameId, action: 'void' }).catch(() => {});
     } 
     
     // ✅ If match is already confirmed, revert ELO properly
