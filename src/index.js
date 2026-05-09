@@ -15,6 +15,7 @@
   const syncRanks = require('./scripts/syncRanks');
   const {cleanInvalidMessages} = require('./events/messageCreatePacks')
   const connectDB = require('./config/database');
+  const { setupResultListener } = require('./utils/redisClient');
 
   let loadLogs, cleanMatchLogs, getActiveGames, loadActiveGames, deleteActiveGame, checkAllQueueChannelsOnStartup;
 
@@ -141,6 +142,8 @@
       await checkAllQueueChannelsOnStartup(client);
       await cleanupExpiredPunishments(client);
       setInterval(() => cleanupExpiredPunishments(client), 30_000);
+
+      setupResultListener(client);
 
       await sendStatusEmbed('online');
     } catch (err) {

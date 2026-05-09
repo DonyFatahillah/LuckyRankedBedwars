@@ -65,6 +65,25 @@ class Player {
     }
   }
 
+  static async load(member) {
+    const player = new Player(member);
+    try {
+      const doc = await PlayerModel.findOne({ userId: member.id });
+      if (doc) {
+        player.ingameUsername = doc.ingameUsername;
+        stats[player.id].ingameUsername = doc.ingameUsername;
+        player.elo = doc.elo;
+      }
+    } catch (err) {
+      console.error(`[Player] Failed to load data from Mongo for ${member.id}:`, err);
+    }
+    return player;
+  }
+
+  get username() {
+    return this.ingameUsername || this.discordUsername;
+  }
+
   getWinGain() {
     const elo = this.elo;
     if (elo < 100) return 35;

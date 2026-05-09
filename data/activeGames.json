@@ -1,1 +1,40 @@
-[]
+[
+  [
+    "718A45",
+    {
+      "gameId": "718A45",
+      "players": [
+        "624189166930100224",
+        "942069510423343105"
+      ],
+      "teamA": [
+        "624189166930100224"
+      ],
+      "teamB": [
+        "942069510423343105"
+      ],
+      "captainIds": [
+        "624189166930100224",
+        "942069510423343105"
+      ],
+      "categoryId": "1502659490158477372",
+      "textChannelId": "1502659492993831113",
+      "voiceAId": "1502659494801313972",
+      "voiceBId": "1502659496755859456",
+      "queueType": "1v1",
+      "map": "Artemis",
+      "startedAt": 1778332344602,
+      "status": "pending",
+      "rules": {
+        "format": "1v1",
+        "map": "Random 1v1 Map",
+        "rounds": 1,
+        "bedBreakEnabled": true,
+        "mvpBonus": true,
+        "note": "Standard rules apply.",
+        "rulesEmbed": ""
+      },
+      "isPartyMatch": false
+    }
+  ]
+]

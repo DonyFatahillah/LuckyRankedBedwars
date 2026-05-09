@@ -246,14 +246,14 @@ async function createMatch(guild, players, teamSize, options = {}) {
     await setActiveGame(hex, matchData);
 
     // Publish to Redis for Minecraft Bridge
-    const teamAData = teams[0].map(m => {
-      const p = new Player(m);
-      return { id: p.id, ign: p.ingameUsername || p.discordUsername, elo: p.elo };
-    });
-    const teamBData = teams[1].map(m => {
-      const p = new Player(m);
-      return { id: p.id, ign: p.ingameUsername || p.discordUsername, elo: p.elo };
-    });
+    const teamAData = await Promise.all(teams[0].map(async m => {
+      const p = await Player.load(m);
+      return { id: p.id, ign: p.ingameUsername, elo: p.elo };
+    }));
+    const teamBData = await Promise.all(teams[1].map(async m => {
+      const p = await Player.load(m);
+      return { id: p.id, ign: p.ingameUsername, elo: p.elo };
+    }));
 
     await publishMatch({
       matchId: hex,
