@@ -21,6 +21,11 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   }
 
   console.log(`[autoConfirmMatch] Processing game ${gameId}`);
+  if (!match.teams || !match.teams[0] || !match.teams[1]) {
+    console.error(`[autoConfirmMatch] Match ${gameId} is missing team data. Teams:`, match.teams);
+    return;
+  }
+
   const isAllRank = isAllRankQueue(match.voiceChannelId);
   const scoringChannel = await guild.channels.fetch(SCORING_CHANNEL_ID).catch(() => null);
   const allPlayerIds = [...match.teams[0], ...match.teams[1]];
