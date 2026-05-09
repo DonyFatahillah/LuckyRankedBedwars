@@ -33,8 +33,10 @@ module.exports = {
       const member = allMembers.get(userId);
       if (!member) continue;
 
-      const player = new Player(member);
-      const username = player.ingameUsername || player.discordUsername;
+      const player = await Player.load(member);
+      const baseName = player.ingameUsername || player.discordUsername;
+      const displayPart = player.displayUsername ? ` | ${player.displayUsername}` : '';
+      const username = `${baseName}${displayPart}`;
       validEntries.push({ userId, elo, username });
     }
 

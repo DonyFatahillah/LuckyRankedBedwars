@@ -24,12 +24,13 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    await interaction.deferReply({ ephemeral: true });
     const actor = interaction.member;
     const newnick = interaction.options.getString('newnick');
     const targetUser = interaction.options.getUser('user');
 
     const isAdmin = actor.permissions.has(PermissionFlagsBits.Administrator);
-    const hasRole = r => actor.roles.cache.has(r);
+    const hasRole = r => r && actor.roles.cache.has(r);
     const isAllowed =
       isAdmin ||
       hasRole(STAFF_ROLE_ID) ||
@@ -39,7 +40,7 @@ module.exports = {
       hasRole(ROLE3);
 
     if (!isAllowed) {
-      return interaction.reply({
+      return interaction.editReply({
         content: '❌ You do not have permission to use this command.',
         ephemeral: true
       });
@@ -50,14 +51,14 @@ module.exports = {
       : actor;
 
     if (!targetMember) {
-      return interaction.reply({
+      return interaction.editReply({
         content: '❌ Could not find the specified member.',
         ephemeral: true
       });
     }
 
     if (targetUser && actor.id !== targetUser.id && !isAdmin) {
-      return interaction.reply({
+      return interaction.editReply({
         content: '❌ Only admins can change nicknames for others.',
         ephemeral: true
       });
@@ -66,21 +67,16 @@ module.exports = {
     const player = new Player(targetMember);
 
     try {
-      if (player.prefixEnabled) {
-        // Use numeric ELO as prefix
-        await player.setNickname(newnick, true);
-      } else {
-        // Plain nickname without prefix
-        await player.setDisplayName(newnick);
-      }
+      // Set the displayUsername which will update the full nickname automatically via save()
+      await player.setDisplayUsername(newnick);
 
-      return interaction.reply({
+      return interaction.editReply({
         content: `✅ Display name updated for <@${targetMember.id}> to \`${targetMember.displayName}\`.`,
         ephemeral: true
       });
     } catch (err) {
       console.warn(`[nickname] Failed to set nickname for ${targetMember.id}:`, err.message);
-      return interaction.reply({
+      return interaction.editReply({
         content: '❌ Failed to change nickname (maybe insufficient permissions).',
         ephemeral: true
       });

@@ -44,13 +44,15 @@ class Player {
         recentlyPlayed: [],
         lastPlayedAt: 0,
         discordUsername: this.discordUsername,
-        ingameUsername: null
+        ingameUsername: null,
+        displayUsername: null
       };
     }
 
     const playerStats = stats[this.id];
     this.discordUsername = playerStats.discordUsername || member.user.username;
     this.ingameUsername = playerStats.ingameUsername || null;
+    this.displayUsername = playerStats.displayUsername || null;
     this.wins = playerStats.wins ?? 0;
     this.losses = playerStats.losses ?? 0;
     this.winstreak = playerStats.winstreak ?? 0;
@@ -71,7 +73,9 @@ class Player {
       const doc = await PlayerModel.findOne({ userId: member.id });
       if (doc) {
         player.ingameUsername = doc.ingameUsername;
+        player.displayUsername = doc.displayUsername;
         stats[player.id].ingameUsername = doc.ingameUsername;
+        stats[player.id].displayUsername = doc.displayUsername;
         player.elo = doc.elo;
       }
     } catch (err) {
@@ -203,10 +207,16 @@ class Player {
     await this.save();
   }
 
-  async setNickname(nameOnly) {
-    const baseName = nameOnly || this.ingameUsername || this.discordUsername;
+  async setDisplayUsername(newName) {
+    this.displayUsername = newName ? newName.trim() : null;
+    await this.save();
+  }
+
+  async setNickname() {
+    const baseName = this.ingameUsername || this.discordUsername;
+    const displayPart = this.displayUsername ? ` | ${this.displayUsername}` : '';
     const prefix = this.prefixEnabled ? `[${this.elo}] ` : '';
-    const nickname = `${prefix}${baseName}`.substring(0, 32);
+    const nickname = `${prefix}${baseName}${displayPart}`.substring(0, 32);
     await this.member.setNickname(nickname).catch(() => {});
   }
 
@@ -222,7 +232,8 @@ class Player {
       recentlyPlayed: this.recentlyPlayed,
       lastPlayedAt: this.lastPlayedAt,
       discordUsername: this.discordUsername,
-      ingameUsername: this.ingameUsername
+      ingameUsername: this.ingameUsername,
+      displayUsername: this.displayUsername
     };
     saveStats();
 
@@ -242,7 +253,8 @@ class Player {
           recentlyPlayed: this.recentlyPlayed,
           lastPlayedAt: this.lastPlayedAt,
           discordUsername: this.discordUsername,
-          ingameUsername: this.ingameUsername
+          ingameUsername: this.ingameUsername,
+          displayUsername: this.displayUsername
         },
         { upsert: true }
       );
@@ -251,8 +263,9 @@ class Player {
     }
 
     const baseName = this.ingameUsername || this.discordUsername;
+    const displayPart = this.displayUsername ? ` | ${this.displayUsername}` : '';
     const prefix = this.prefixEnabled ? `[${this.elo}] ` : '';
-    const nickname = `${prefix}${baseName}`.substring(0, 32);
+    const nickname = `${prefix}${baseName}${displayPart}`.substring(0, 32);
     await this.member.setNickname(nickname).catch(() => {});
     await updateRankRoles(this.member, this.elo);
   }
@@ -273,7 +286,8 @@ class Player {
       prefix: this.prefixEnabled,
       recentlyPlayed: this.recentlyPlayed,
       discordUsername: this.discordUsername,
-      ingameUsername: this.ingameUsername
+      ingameUsername: this.ingameUsername,
+      displayUsername: this.displayUsername
     };
   }
 

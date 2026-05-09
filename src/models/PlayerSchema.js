@@ -13,6 +13,7 @@ const playerSchema = new mongoose.Schema({
   lastPlayedAt: { type: Number, default: 0 },
   discordUsername: { type: String, default: null },
   ingameUsername: { type: String, default: null },
+  displayUsername: { type: String, default: null },
   minecraftUuid: { type: String, default: null },
   linkCode: { type: String, default: null },
   linkExpiry: { type: Date, default: null }
