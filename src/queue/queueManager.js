@@ -255,9 +255,12 @@ async function createMatch(guild, players, teamSize, options = {}) {
       return { id: p.id, ign: p.ingameUsername, elo: p.elo };
     }));
 
+    const formattedMap = `w_4_0_${matchData.map.toLowerCase()}`;
+
     await publishMatch({
       matchId: hex,
       queueType: matchData.queueType,
+      map: formattedMap,
       teamA: teamAData,
       teamB: teamBData
     }).catch(err => console.error('[Redis-Bridge] Failed to publish:', err));
