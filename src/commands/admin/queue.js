@@ -28,6 +28,7 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    await interaction.deferReply();
     const state = interaction.options.getString('state');
     const isOpen = state === 'open';
     const newLimit = isOpen ? 0 : 1; // 0 = infinite, 1 = closed for new joins
@@ -41,7 +42,7 @@ module.exports = {
       updatedChannels++;
     }
 
-    return interaction.reply({
+    return interaction.editReply({
       content: isOpen
         ? `✅ Ranked queue is now **OPEN**! `
         : `⛔ Ranked queue is now **CLOSED**! `,

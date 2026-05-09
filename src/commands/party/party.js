@@ -111,61 +111,59 @@ module.exports = {
     .addSubcommand(cmd => cmd.setName('disbandall').setDescription('Disband all parties (admin only)')),
 
   async execute(interaction) {
+    await interaction.deferReply({ ephemeral: false });
     const userId = interaction.user.id;
     const sub = interaction.options.getSubcommand();
     const guild = interaction.guild;
     let party = getPartyByUser(userId);
 
     if (!isPartyMatch()) {
-      return interaction.reply({ content: '⚠️ Party Mode is currently disabled.', ephemeral: false });
+      return interaction.editReply({ content: '⚠️ Party Mode is currently disabled.', ephemeral: false });
     }
 
     switch (sub) {
       case 'create': {
-        if (party) return interaction.reply({ content: '❌ You are already in a party.', ephemeral: false });
-        const newParty = createParty(userId);
+        if (party) return interaction.editReply({ content: '❌ You are already in a party.', ephemeral: false });
+        const newParty = await createParty(userId);
         const embed = await buildPartyInfoEmbed(newParty, guild);
-        return interaction.reply({ content: '✅ Party created!', embeds: [embed], ephemeral: false });
+        return interaction.editReply({ content: '✅ Party created!', embeds: [embed], ephemeral: false });
       }
 
       case 'invite': {
         const targetUser = interaction.options.getUser('user');
-        await interaction.deferReply({ ephemeral: false });
-          
-        
-          const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
+        const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
 
-          if (!isValidTarget(targetMember)) {
-            return interaction.reply({ content: '❌ Sorry but we can’t find that user.', ephemeral: true });
-          } 
+        if (!isValidTarget(targetMember)) {
+          return interaction.editReply({ content: '❌ Sorry but we can’t find that user.', ephemeral: true });
+        } 
 
         if (targetUser.id === userId)
-          return interaction.followUp({ content: '❌ You cannot invite yourself.' });
+          return interaction.editReply({ content: '❌ You cannot invite yourself.' });
 
         if (!party) {
-          party = createParty(userId);
+          party = await createParty(userId);
           const embed = await buildPartyInfoEmbed(party, guild);
           await interaction.editReply({ content: '✅ No party found. Party created automatically!', embeds: [embed] });
         }
 
         if (!party.isLeader(userId)) {
-          return interaction.followUp({ content: '❌ You must be the party leader to invite.' });
+          return interaction.editReply({ content: '❌ You must be the party leader to invite.' });
         }
 
         const targetParty = getPartyByUser(targetUser.id);
-        if (targetParty && targetParty.leaderId !== userId) leaveParty(targetUser.id);
+        if (targetParty && targetParty.leaderId !== userId) await leaveParty(targetUser.id);
 
-        const success = inviteToParty(userId, targetUser.id);
-        if (!success) return interaction.followUp({ content: '❌ Failed to invite user. They may already be invited or party is full.' });
+        const success = await inviteToParty(userId, targetUser.id);
+        if (!success) return interaction.editReply({ content: '❌ Failed to invite user. They may already be invited or party is full.' });
 
-        await interaction.followUp({ content: `✅ Invited <@${targetUser.id}> to your party.` });
+        await interaction.editReply({ content: `✅ Invited <@${targetUser.id}> to your party.` });
 
         try {
           await targetUser.send({
             content: `📬 You were invited to a party by <@${userId}>!\nUse \`/party join @${interaction.user.username}\` to join.`
           });
         } catch {
-          await interaction.followUp({ content: '⚠️ User was invited but could not be DMed.' });
+          await interaction.followUp({ content: '⚠️ User was invited but could not be DMed.', ephemeral: true });
         }
         break;
       }
@@ -174,30 +172,30 @@ module.exports = {
         const leader = interaction.options.getUser('leader');
 
         if (leader.id === userId)
-          return interaction.reply({ content: '❌ You cannot join your own party.', ephemeral: false });
+          return interaction.editReply({ content: '❌ You cannot join your own party.', ephemeral: false });
 
         const targetParty = getPartyByLeader(leader.id);
         if (!targetParty)
-          return interaction.reply({ content: '❌ That party doesn’t exist.', ephemeral: false });
+          return interaction.editReply({ content: '❌ That party doesn’t exist.', ephemeral: false });
 
         const isInvited = targetParty.invited.includes(userId);
         const isPublic = targetParty.public;
 
         if (!isInvited && !isPublic) {
-          return interaction.reply({ content: '❌ This party is private. You need an invite to join.', ephemeral: false });
+          return interaction.editReply({ content: '❌ This party is private. You need an invite to join.', ephemeral: false });
         }
 
         const currentParty = getPartyByUser(userId);
-        if (currentParty && currentParty.leaderId !== leader.id) leaveParty(userId);
+        if (currentParty && currentParty.leaderId !== leader.id) await leaveParty(userId);
 
-        const success = acceptInvite(userId, leader.id);
+        const success = await acceptInvite(userId, leader.id);
         if (!success)
-          return interaction.reply({ content: '❌ Failed to join the party.', ephemeral: false });
+          return interaction.editReply({ content: '❌ Failed to join the party.', ephemeral: false });
 
         const updatedParty = getPartyByLeader(leader.id);
         const embed = await buildPartyInfoEmbed(updatedParty, guild);
 
-        return interaction.reply({
+        return interaction.editReply({
           content: `✅ <@${userId}> joined <@${leader.id}>'s party.`,
           embeds: [embed],
           ephemeral: false
@@ -205,85 +203,87 @@ module.exports = {
       }
 
       case 'leave': {
-        if (!party) return interaction.reply({ content: '❌ You are not in a party.', ephemeral: false });
-        const result = leaveParty(userId);
+        if (!party) return interaction.editReply({ content: '❌ You are not in a party.', ephemeral: false });
+        const result = await leaveParty(userId);
         const msg = result === 'disbanded'
           ? '✅ You left the party. The party has been disbanded.'
           : '✅ You left the party.';
-        return interaction.reply({ content: msg, ephemeral: false });
+        return interaction.editReply({ content: msg, ephemeral: false });
       }
 
       case 'disband': {
         if (!party || !party.isLeader(userId)) {
-          return interaction.reply({ content: '❌ You must be the party leader to disband.', ephemeral: false });
+          return interaction.editReply({ content: '❌ You must be the party leader to disband.', ephemeral: false });
         }
-        disbandParty(userId);
-        return interaction.reply({ content: '✅ Party disbanded.', ephemeral: false });
+        await disbandParty(userId);
+        return interaction.editReply({ content: '✅ Party disbanded.', ephemeral: false });
       }
 
       case 'kick': {
         if (!party || !party.isLeader(userId)) {
-          return interaction.reply({ content: '❌ You must be the leader to kick members.', ephemeral: false });
+          return interaction.editReply({ content: '❌ You must be the leader to kick members.', ephemeral: false });
         }
 
         const target = interaction.options.getUser('user');
-        if (!party.isMember(target.id)) return interaction.reply({ content: '❌ That user is not in your party.', ephemeral: false });
-        if (target.id === userId) return interaction.reply({ content: '❌ You can’t kick yourself.', ephemeral: false });
+        if (!party.isMember(target.id)) return interaction.editReply({ content: '❌ That user is not in your party.', ephemeral: false });
+        if (target.id === userId) return interaction.editReply({ content: '❌ You can’t kick yourself.', ephemeral: false });
 
         party.removeMember(target.id);
-        return interaction.reply({ content: `✅ <@${target.id}> has been kicked.`, ephemeral: false });
+        await saveParties(userId);
+        return interaction.editReply({ content: `✅ <@${target.id}> has been kicked.`, ephemeral: false });
       }
 
       case 'promote': {
-        if (!party || !party.isLeader(userId)) return interaction.reply({ content: '❌ Only the leader can promote.', ephemeral: false });
+        if (!party || !party.isLeader(userId)) return interaction.editReply({ content: '❌ Only the leader can promote.', ephemeral: false });
 
         const target = interaction.options.getUser('user');
-        if (!party.isMember(target.id)) return interaction.reply({ content: '❌ That user is not in your party.', ephemeral: false });
+        if (!party.isMember(target.id)) return interaction.editReply({ content: '❌ That user is not in your party.', ephemeral: false });
 
-        const success = promoteLeader(userId, target.id);
-        if (!success) return interaction.reply({ content: '❌ Failed to promote member.', ephemeral: false });
+        const success = await promoteLeader(userId, target.id);
+        if (!success) return interaction.editReply({ content: '❌ Failed to promote member.', ephemeral: false });
 
-        return interaction.reply({ content: `✅ <@${target.id}> is now the party leader.`, ephemeral: false });
+        return interaction.editReply({ content: `✅ <@${target.id}> is now the party leader.`, ephemeral: false });
       }
 
       case 'info': {
-        if (!party) return interaction.reply({ content: '❌ You are not in a party.', ephemeral: false });
+        if (!party) return interaction.editReply({ content: '❌ You are not in a party.', ephemeral: false });
         const embed = await buildPartyInfoEmbed(party, guild);
-        return interaction.reply({ embeds: [embed], ephemeral: false });
+        return interaction.editReply({ embeds: [embed], ephemeral: false });
       }
 
       case 'slot': {
-        if (!party) return interaction.reply({ content: '❌ You are not in a party.', ephemeral: false });
-        if (!party.isLeader(userId)) return interaction.reply({ content: '❌ Only the leader can set the slot.', ephemeral: false });
+        if (!party) return interaction.editReply({ content: '❌ You are not in a party.', ephemeral: false });
+        if (!party.isLeader(userId)) return interaction.editReply({ content: '❌ Only the leader can set the slot.', ephemeral: false });
 
         const slotCount = interaction.options.getInteger('number');
 
         if (slotCount > globalPartyLimit) {
-          return interaction.reply({
+          return interaction.editReply({
             content: `❌ You cannot set more than the current global limit of **${globalPartyLimit}** members.`,
             ephemeral: false
           });
         }
 
         party.maxMembers = slotCount;
-        return interaction.reply({ content: `✅ Party slot count set to **${slotCount}**.`, ephemeral: false });
+        await saveParties(userId);
+        return interaction.editReply({ content: `✅ Party slot count set to **${slotCount}**.`, ephemeral: false });
       }
 
       case 'setlimit': {
         if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-          return interaction.reply({ content: '❌ Only admins can set the global party slot limit.', ephemeral: false });
+          return interaction.editReply({ content: '❌ Only admins can set the global party slot limit.', ephemeral: false });
         }
 
         const newLimit = interaction.options.getInteger('number');
-        if (newLimit < 1) return interaction.reply({ content: '❌ Limit must be at least 1.', ephemeral: false });
+        if (newLimit < 1) return interaction.editReply({ content: '❌ Limit must be at least 1.', ephemeral: false });
 
         saveGlobalLimit(newLimit);
-        return interaction.reply({ content: `✅ Global party slot limit set to **${newLimit}**.`, ephemeral: false });
+        return interaction.editReply({ content: `✅ Global party slot limit set to **${newLimit}**.`, ephemeral: false });
       }
 
       case 'autowarp': {
-        if (!party) return interaction.reply({ content: '❌ You are not in a party.', ephemeral: false });
-        if (!party.isLeader(userId)) return interaction.reply({ content: '❌ Only the party leader can change this setting.', ephemeral: false });
+        if (!party) return interaction.editReply({ content: '❌ You are not in a party.', ephemeral: false });
+        if (!party.isLeader(userId)) return interaction.editReply({ content: '❌ Only the party leader can change this setting.', ephemeral: false });
 
         const state = interaction.options.getString('state') === 'on';
         party.setAutoWarp(state);
@@ -301,32 +301,34 @@ module.exports = {
           }
         }
 
-        return interaction.reply({
+        await saveParties(userId);
+        return interaction.editReply({
           content: `✅ AutoWarp is now **${state ? 'enabled' : 'disabled'}**.`,
           ephemeral: false
         });
       }
 
       case 'privacy': {
-        if (!party) return interaction.reply({ content: '❌ You are not in a party.', ephemeral: false });
-        if (!party.isLeader(userId)) return interaction.reply({ content: '❌ Only the leader can change privacy.', ephemeral: false });
+        if (!party) return interaction.editReply({ content: '❌ You are not in a party.', ephemeral: false });
+        if (!party.isLeader(userId)) return interaction.editReply({ content: '❌ Only the leader can change privacy.', ephemeral: false });
 
         const type = interaction.options.getString('type');
         party.public = type === 'public';
-        return interaction.reply({ content: `✅ Party privacy set to **${type}**.`, ephemeral: false });
+        await saveParties(userId);
+        return interaction.editReply({ content: `✅ Party privacy set to **${type}**.`, ephemeral: false });
       }
 
       case 'list': {
         if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-          return interaction.reply({ content: '❌ Only admins can view all parties.', ephemeral: false });
+          return interaction.editReply({ content: '❌ Only admins can view all parties.', ephemeral: false });
         }
 
-        const parties = getAllParties();
-        if (!parties.length) return interaction.reply({ content: '⚠️ No active parties.', ephemeral: false });
+        const partiesList = getAllParties();
+        if (!partiesList.length) return interaction.editReply({ content: '⚠️ No active parties.', ephemeral: false });
 
         const embed = new EmbedBuilder().setTitle('📜 Active Parties').setColor(0x2F3136);
 
-        for (const p of parties) {
+        for (const p of partiesList) {
           try {
             const members = await Promise.all(p.members.map(async id => {
               const m = await interaction.guild.members.fetch(id).catch(() => null);
@@ -338,18 +340,20 @@ module.exports = {
           } catch {}
         }
 
-        return interaction.reply({ embeds: [embed], ephemeral: false });
+        return interaction.editReply({ embeds: [embed], ephemeral: false });
       }
 
       case 'disbandall': {
         if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-          return interaction.reply({ content: '❌ Only admins can disband all parties.', ephemeral: false });
+          return interaction.editReply({ content: '❌ Only admins can disband all parties.', ephemeral: false });
         }
 
-        const parties = getAllParties();
-        parties.forEach(p => disbandParty(p.leaderId));
+        const partiesToDisband = getAllParties();
+        for (const p of partiesToDisband) {
+          await disbandParty(p.leaderId);
+        }
 
-        return interaction.reply({ content: `✅ All ${parties.length} parties have been disbanded.`, ephemeral: false });
+        return interaction.editReply({ content: `✅ All ${partiesToDisband.length} parties have been disbanded.`, ephemeral: false });
       }
     }
   }

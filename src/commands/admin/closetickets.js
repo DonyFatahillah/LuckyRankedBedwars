@@ -20,11 +20,12 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 
   async execute(interaction) {
+    await interaction.deferReply({ ephemeral: true });
     const channel = interaction.channel;
 
     // ✅ Validate this is a ticket channel
     if (!VALID_TICKET_PREFIXES.some(prefix => channel.name.startsWith(prefix))) {
-      return interaction.reply({
+      return interaction.editReply({
         content: '❌ This is not a valid ticket channel.',
         ephemeral: true,
       });
@@ -37,7 +38,7 @@ module.exports = {
 
     const userId = userPermission?.id;
     if (!userId) {
-      return interaction.reply({
+      return interaction.editReply({
         content: '❌ Could not find the ticket owner.',
         ephemeral: true,
       });
@@ -90,7 +91,7 @@ module.exports = {
     }
 
     // ✅ Respond to the staff member
-    await interaction.reply({
+    await interaction.editReply({
       content: `✅ Ticket closed, archived, and renamed to \`${newName}\`.`,
       ephemeral: true,
     });

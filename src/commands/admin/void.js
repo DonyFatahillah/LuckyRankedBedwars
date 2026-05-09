@@ -60,6 +60,7 @@ module.exports = {
   },
 
   async execute(interaction) {
+    await interaction.deferReply({ ephemeral: true });
     const gameId = interaction.options.getString('gameid').toUpperCase();
     const reason = interaction.options.getString('reason')?.trim() || 'No reason provided';
     const activeGames = getActiveGames();
@@ -70,7 +71,7 @@ module.exports = {
 
     const match = logs[gameId];
     if (!match) {
-      return interaction.reply({ content: `❌ Match ${gameId} not found.`, ephemeral: true });
+      return interaction.editReply({ content: `❌ Match ${gameId} not found.`, ephemeral: true });
     }
 
     const guild = interaction.guild;
@@ -177,7 +178,7 @@ module.exports = {
 
     // ✅ Reply to staff
     try {
-      await interaction.reply({
+      await interaction.editReply({
         content: `✅ Match ${gameId} has been voided.${removedFromActive ? '' : ' (ELO reverted)'}`,
         ephemeral: true
       });

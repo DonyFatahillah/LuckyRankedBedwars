@@ -44,11 +44,12 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    await interaction.deferReply();
     const member = interaction.options.getMember('member');
     const reason = interaction.options.getString('reason')?.trim()
       || 'The player has been striked due to a violation to the rules.';
 
-    if (!member) return interaction.reply({ content: '❌ Member not found.', ephemeral: true });
+    if (!member) return interaction.editReply({ content: '❌ Member not found.', ephemeral: true });
 
     const strikes = loadJSON(STRIKE_DB);
     const bans = loadJSON(BAN_DB);
@@ -74,7 +75,7 @@ module.exports = {
     }
 
     if (currentStrikeLevel >= STRIKE_ROLES.length) {
-      return interaction.reply({
+      return interaction.editReply({
         content: `⚠️ ${member} already has the highest strike level (III).`,
         ephemeral: true
       });
@@ -104,7 +105,7 @@ module.exports = {
       saveJSON(STRIKE_DB, strikes);
       saveJSON(BAN_DB, bans);
 
-      await interaction.reply({
+      await interaction.editReply({
         content: `✅ ${member} has been given **Strike ${nextLabel}**.`,
         ephemeral: false
       });
@@ -137,7 +138,11 @@ module.exports = {
 
     } catch (err) {
       console.error('[Strike] Failed to apply:', err);
-      await interaction.reply({ content: '❌ Failed to assign strike. Check bot permissions.', ephemeral: true });
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: '❌ Failed to assign strike. Check bot permissions.', ephemeral: true });
+      } else {
+        await interaction.editReply({ content: '❌ Failed to assign strike. Check bot permissions.', ephemeral: true });
+      }
     }
   }
 };
