@@ -21,14 +21,17 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   }
 
   console.log(`[autoConfirmMatch] Processing game ${gameId}`);
-  if (!match.teams || !match.teams[0] || !match.teams[1]) {
-    console.error(`[autoConfirmMatch] Match ${gameId} is missing team data. Teams:`, match.teams);
+  
+  // Normalize team data to match the expected format
+  const teams = [match.teamA, match.teamB];
+  if (!teams[0] || !teams[1]) {
+    console.error(`[autoConfirmMatch] Match ${gameId} is missing team data. TeamA:`, match.teamA, "TeamB:", match.teamB);
     return;
   }
 
   const isAllRank = isAllRankQueue(match.voiceChannelId);
   const scoringChannel = await guild.channels.fetch(SCORING_CHANNEL_ID).catch(() => null);
-  const allPlayerIds = [...match.teams[0], ...match.teams[1]];
+  const allPlayerIds = [...teams[0], ...teams[1]];
   const members = await Promise.all(allPlayerIds.map(id => guild.members.fetch(id).catch(() => null)));
 
   // --- Determine winner from bedbreaker if needed ---
@@ -37,7 +40,7 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
     const bedbreakerPlayer = await Promise.all(
       members.map(async m => {
         if (!m) return null;
-        const player = new Player(m);
+        const player = await Player.load(m);
         return player.username.toLowerCase() === winBedbreaker.toLowerCase()
           ? { player, member: m }
           : null;
@@ -45,15 +48,15 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
     ).then(res => res.find(Boolean));
 
     if (bedbreakerPlayer) {
-      winnerTeam = match.teams[0].includes(bedbreakerPlayer.member.id) ? 'team1' : 'team2';
+      winnerTeam = teams[0].includes(bedbreakerPlayer.member.id) ? 'team1' : 'team2';
     } else {
       console.warn(`[AutoConfirm] WinBedbreaker ${winBedbreaker} not found in either team for ${gameId}`);
       winnerTeam = 'team1'; // fallback
     }
   }
 
-  const winners = winnerTeam === 'team1' ? match.teams[0] : match.teams[1];
-  const losers = winnerTeam === 'team1' ? match.teams[1] : match.teams[0];
+  const winners = winnerTeam === 'team1' ? teams[0] : teams[1];
+  const losers = winnerTeam === 'team1' ? teams[1] : teams[0];
 
   // --- ELO and stat updates ---
   const results = [];
