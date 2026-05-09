@@ -91,7 +91,7 @@ module.exports = {
       deleteActiveGame(gameId);
       removedFromActive = true;
       
-      // Notify Minecraft plugin
+      // Notify Minecraft plugin via matches channel
       await publishMatch({ matchId: gameId, action: 'void' }).catch(() => {});
     } 
     
