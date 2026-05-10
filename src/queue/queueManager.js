@@ -209,6 +209,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
       {
         title: `Welcome to Match #${hex}`,
         description:
+          `🗺️ **Map:** ${randomMap}\n\n` +
           `👑 **Team Captains:**\n• Team 1: ${teamCaptainsMention[0]}\n• Team 2: ${teamCaptainsMention[1]}\n\n` +
           `👥 **Teams:**\n• **Team 1:** ${teamMentions[0].join(', ')}\n• **Team 2:** ${teamMentions[1].join(', ')}\n\n` +
           `📜 **Match Rules:**\n• Note: ${rules.note}\n\n` +
