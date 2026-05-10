@@ -86,16 +86,14 @@ module.exports = {
       };
       rank = getRankByElo(elo);
       const baseName = playerData.ingameUsername || playerData.discordUsername || (member ? member.user.username : 'Unknown');
-      const displayPart = playerData.displayUsername ? ` | ${playerData.displayUsername}` : '';
-      mcName = `${baseName}${displayPart}`;
+      mcName = baseName;
     } else if (member) {
       // ✅ Fallback if no DB entry yet but member exists
       const player = new Player(member);
       stats = player.getStats();
       rank = getRankByElo(player.elo);
       const baseName = player.ingameUsername || player.discordUsername;
-      const displayPart = player.displayUsername ? ` | ${player.displayUsername}` : '';
-      mcName = `${baseName}${displayPart}`;
+      mcName = baseName;
       elo = player.elo;
     } else {
       return interaction.editReply({ content: '❌ Unable to find that user data' });
