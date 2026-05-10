@@ -34,9 +34,7 @@ module.exports = {
       if (!member) continue;
 
       const player = await Player.load(member);
-      const baseName = player.ingameUsername || player.discordUsername;
-      const displayPart = player.displayUsername ? ` | ${player.displayUsername}` : '';
-      const username = `${baseName}${displayPart}`;
+      const username = player.ingameUsername || player.discordUsername;
       validEntries.push({ userId, elo, username });
     }
 
