@@ -104,6 +104,13 @@ async function handleEloQueue(newState, eloQueue, party = null) {
         continue;
       }
 
+      if (member.roles.cache.has(BLACKLISTED_ROLE_ID)) {
+        await member.voice.disconnect().catch(() => {});
+        await member.send('🚫 You are blacklisted from joining queue channels.').catch(() => {});
+        console.log(`[BlacklistCheck] Disconnected blacklisted player ${member.displayName} from queue channel ${vcId}`);
+        continue;
+      }
+
       // ⚠️ ELO range validation
       const player = new Player(member);
       if (player.elo < eloQueue.minElo || player.elo > eloQueue.maxElo) {
