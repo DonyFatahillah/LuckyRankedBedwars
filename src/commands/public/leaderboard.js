@@ -25,16 +25,14 @@ module.exports = {
     const sorted = eloCache.getSortedEntries();
     const validEntries = [];
 
-    // Step 1: Build validEntries using pre-fetched names or discord.js collection
-    // Fetch all members once to avoid hitting rate limits in a loop
-    const allMembers = await interaction.guild.members.fetch();
+    // Optimize: Fetch players directly from database in chunks instead of fetching all members
+    const userIds = sorted.map(([id]) => id);
+    const players = await PlayerModel.find({ userId: { $in: userIds } });
+    const playerMap = new Map(players.map(p => [p.userId, p]));
 
     for (const [userId, elo] of sorted) {
-      const member = allMembers.get(userId);
-      if (!member) continue;
-
-      const player = await Player.load(member);
-      const username = player.ingameUsername || player.discordUsername;
+      const playerData = playerMap.get(userId);
+      const username = playerData?.ingameUsername || `Unknown (${userId.slice(-4)})`;
       validEntries.push({ userId, elo, username });
     }
 
