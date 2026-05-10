@@ -10,6 +10,7 @@ const { getPartyByUser } = require('../utils/partySystem');
 require('dotenv').config({ path: __dirname + '/../.env' });
 
 const RANKED_BANNED_ROLE_ID = process.env.RANKED_BANNED_ROLE_ID;
+const BLACKLISTED_ROLE_ID = process.env.BLACKLISTED_ROLE_ID;
 const WAITING_ROOM_VOICE_ID = process.env.WAITING_ROOM_VOICE_ID;
 
 const queueHandlers = {
@@ -18,6 +19,11 @@ const queueHandlers = {
   [process.env.QUEUE_3V3_TEST_ID]: queue3v3,
   [process.env.QUEUE_4V4_TEST_ID]: queue4v4,
 };
+
+// Collect all queue channel IDs from environment variables
+const ALL_QUEUE_IDS = Object.entries(process.env)
+  .filter(([key, value]) => key.includes('QUEUE') && value && /^\d{17,19}$/.test(value))
+  .map(([, value]) => value);
 
 const queueLocks = new Map();
 const deletedCategories = new Set();
@@ -30,6 +36,16 @@ module.exports = {
     const oldChannel = oldState.channel;
 
     console.log(`[voiceStateUpdate] ${oldState.channelId} → ${newChannelId}`);
+
+    // ───── Blacklist Check ─────
+    if (newChannelId && ALL_QUEUE_IDS.includes(newChannelId)) {
+      if (newState.member.roles.cache.has(BLACKLISTED_ROLE_ID)) {
+        await newState.member.voice.disconnect().catch(() => {});
+        await newState.member.send('🚫 You are blacklisted from joining queue channels.').catch(() => {});
+        console.log(`[BlacklistCheck] Disconnected blacklisted player ${newState.member.displayName} from queue channel ${newChannelId}`);
+        return;
+      }
+    }
 
     // ───── Party Mode Handling ─────
     const party = getPartyByUser(newState.member.id);
