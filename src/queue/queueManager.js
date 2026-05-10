@@ -191,7 +191,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
     const playerInstances = await Promise.all(
       teams.flat().map(async m => new Player(m))
     );
-
+  /*
     const partyInviteLines = playerInstances.map(player =>
       `\`/party invite ${player.ingameUsername || player.discordUsername}\``
     ).join('\n');
@@ -203,16 +203,16 @@ async function createMatch(guild, players, teamSize, options = {}) {
       `\`/party slot ${players.length}\` (based on queue size)\n` +
       partyInviteLines +
       `\n\`/host\``;
+      */
 
     const embeds = [
       {
         title: `Welcome to Match #${hex}`,
         description:
-          `Use \`/submit <screenshot> <winbreakername> <topkills> <topkillamount> [losebedbreaker]\` when your game is done.\n\n` +
           `👑 **Team Captains:**\n• Team 1: ${teamCaptainsMention[0]}\n• Team 2: ${teamCaptainsMention[1]}\n\n` +
           `👥 **Teams:**\n• **Team 1:** ${teamMentions[0].join(', ')}\n• **Team 2:** ${teamMentions[1].join(', ')}\n\n` +
           `📜 **Match Rules:**\n• Note: ${rules.note}\n\n` +
-          `${rules.rulesEmbed || ''}`+ partyTip,
+          `${rules.rulesEmbed || ''}`,
         color: 0x00ff00
       }
     ];
@@ -294,11 +294,9 @@ function getRulesForMatchType(teamSize) {
 
     return {
       format: `${teamSize}v${teamSize}`,
-      map: `Random ${teamSize}v${teamSize} Map`,
-      rounds: 1,
-      bedBreakEnabled: true,
-      mvpBonus: true,
-      note: 'Submit results with `/submit`.',
+      //map: `Random ${teamSize}v${teamSize} Map`,
+      //rounds: 1,
+      //bedBreakEnabled: true,
       rulesEmbed: rulesText
     };
   }
@@ -308,11 +306,11 @@ function getRulesForMatchType(teamSize) {
 function fallbackRules(teamSize) {
   return {
     format: teamSize === 1 ? '1v1' : `${teamSize}v${teamSize}`,
-    map: `Random ${teamSize}v${teamSize} Map`,
-    rounds: 1,
-    bedBreakEnabled: true,
-    mvpBonus: true,
-    note: 'Standard rules apply.',
+    //map: `Random ${teamSize}v${teamSize} Map`,
+   // rounds: 1,
+    //bedBreakEnabled: true,
+    //mvpBonus: true,
+   // note: 'Standard rules apply.',
     rulesEmbed: ''
   };
 }
