@@ -10,6 +10,7 @@ const {
 const { getRankByElo } = require('../../utils/EloRank');
 const eloCache = require('../../cache/eloCache');
 const Player = require('../../models/Player');
+const PlayerModel = require('../../models/PlayerSchema');
 
 const PAGE_SIZE = 10;
 
