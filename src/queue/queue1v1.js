@@ -7,12 +7,14 @@ module.exports = {
 
   async handleQueue(guild, members) {
     console.log('[Queue1v1] handleQueue triggered');
-    console.log('[Queue1v1] queueManager:', typeof queueManager.createMatch);
+    
+    // Use prioritization logic
+    const players = queueManager.getEligiblePlayers([...members.values()], 2);
 
-    // Pick exactly 2 members randomly
-    const players = Array.from(members.values())
-      .sort(() => 0.5 - Math.random())
-      .slice(0, 2);
+    if (players.length < 2) {
+      console.log('[Queue1v1] Not enough eligible players.');
+      return;
+    }
 
     console.log('[Queue1v1] Players selected:', players.map(p => p.user.tag).join(', '));
 

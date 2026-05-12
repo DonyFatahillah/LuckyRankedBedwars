@@ -7,6 +7,7 @@ const { getActiveGames, deleteActiveGame } = require('../queue/queueManager');
 const Player = require('../models/Player');
 const eloQueues = require('../config/eloQueues');
 const { getPartyByUser } = require('../utils/partySystem');
+const { trackJoin, trackLeave } = require('../utils/voiceJoinTracker');
 require('dotenv').config({ path: __dirname + '/../.env' });
 
 const RANKED_BANNED_ROLE_ID = process.env.RANKED_BANNED_ROLE_ID;
@@ -36,6 +37,13 @@ module.exports = {
     const oldChannel = oldState.channel;
 
     console.log(`[voiceStateUpdate] ${oldState.channelId} → ${newChannelId}`);
+
+    // Track Join/Leave for join time prioritization
+    if (newChannelId) {
+      trackJoin(newState.member.id);
+    } else {
+      trackLeave(newState.member.id);
+    }
 
     // ───── Blacklist Check ─────
     if (newChannelId && ALL_QUEUE_IDS.includes(newChannelId)) {

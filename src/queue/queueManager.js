@@ -24,6 +24,7 @@ const { logMatch, sendLogToStaffChannel } = require('../utils/matchLogger');
 const Player = require('../models/Player');
 const partySystem = require('../utils/partySystem');
 const { publishMatch } = require('../utils/redisClient');
+const { trackJoin, getJoinTime } = require('../utils/voiceJoinTracker');
 
 // 🧠 Startup queue check
 async function checkAllQueueChannelsOnStartup(client) {
@@ -44,6 +45,11 @@ async function checkAllQueueChannelsOnStartup(client) {
 
     const members = [...voiceChannel.members.values()];
     if (members.length === 0) continue;
+
+    // Track join time for players already in VC
+    for (const member of members) {
+      trackJoin(member.id);
+    }
 
     console.log(`[StartupQueue] Found ${members.length} in queue ${type} → ${voiceChannel.name}`);
 
@@ -84,39 +90,62 @@ function getEligiblePlayers(members, targetCount, maxPartySize = 4) {
         .filter(Boolean);
 
       if (presentMembers.length === 0) continue;
+      
+      // Calculate group join time (earliest member)
+      const groupJoinTime = Math.min(...presentMembers.map(m => getJoinTime(m.id)));
+      
       if (presentMembers.length > maxPartySize) {
         for (let i = 0; i < presentMembers.length; i += maxPartySize) {
-          partyGroups.push(presentMembers.slice(i, i + maxPartySize));
+          const slice = presentMembers.slice(i, i + maxPartySize);
+          partyGroups.push({ 
+            members: slice, 
+            joinTime: groupJoinTime 
+          });
         }
       } else {
-        partyGroups.push(presentMembers);
+        partyGroups.push({ 
+          members: presentMembers, 
+          joinTime: groupJoinTime 
+        });
       }
 
       processedParties.add(party.leaderId);
 
     } else if (!party) {
-      soloMembers.push(member);
+      soloMembers.push({ 
+        member, 
+        joinTime: getJoinTime(member.id) 
+      });
     }
   }
 
-  shuffle(partyGroups);
-  shuffle(soloMembers);
-  partyGroups.sort((a, b) => b.length - a.length);
+  // Sort party groups by join time (earliest first)
+  partyGroups.sort((a, b) => a.joinTime - b.joinTime);
+  // Sort solo members by join time (earliest first)
+  soloMembers.sort((a, b) => a.joinTime - b.joinTime);
 
   const combined = [];
   let total = 0;
 
+  // Fill with parties first (they are already sorted by join time)
   for (const group of partyGroups) {
-    if (total + group.length <= targetCount) {
-      combined.push(...group);
-      total += group.length;
+    if (total + group.members.length <= targetCount) {
+      combined.push(...group.members);
+      total += group.members.length;
     }
     if (total === targetCount) break;
   }
 
+  // Fill remaining slots with solo members (sorted by join time)
   if (total < targetCount) {
-    const needed = targetCount - total;
-    combined.push(...soloMembers.slice(0, needed));
+    for (const solo of soloMembers) {
+      if (total < targetCount) {
+        combined.push(solo.member);
+        total++;
+      } else {
+        break;
+      }
+    }
   }
 
   return combined;
