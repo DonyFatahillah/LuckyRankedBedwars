@@ -262,11 +262,7 @@ class Player {
       console.error(`[Player-Mongo] Failed to save for ${this.id}:`, err);
     }
 
-    const baseName = this.ingameUsername || this.discordUsername;
-    const displayPart = this.displayUsername ? ` | ${this.displayUsername}` : '';
-    const prefix = this.prefixEnabled ? `[${this.elo}] ` : '';
-    const nickname = `${prefix}${baseName}${displayPart}`.substring(0, 32);
-    await this.member.setNickname(nickname).catch(() => {});
+    await this.setNickname();
     await updateRankRoles(this.member, this.elo);
   }
 

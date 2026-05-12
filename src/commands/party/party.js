@@ -24,12 +24,12 @@ const { isPartyMatch } = require('../../utils/partyModeManager');
 
 const LIMIT_PATH = path.join(__dirname, '../../../data/partyLimit.json');
 
-const verifiedRoleId = process.env.VERIFIED_ROLE_ID;
+const verifiedRoleId = process.env.VERIFIED_ROLE_ID || '1401289452633985086';
 const clientId = process.env.CLIENT_ID;
 
 // Helper function
 function isValidTarget(member) {
-  return member && member.id !== clientId && member.roles.cache.has(verifiedRoleId);
+  return member && !member.user.bot && member.id !== clientId && member.roles.cache.has(verifiedRoleId);
 }
 
 let globalPartyLimit = 2;
@@ -134,7 +134,10 @@ module.exports = {
         const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
 
         if (!isValidTarget(targetMember)) {
-          return interaction.editReply({ content: '❌ Sorry but we can’t find that user.', ephemeral: true });
+          return interaction.editReply({ 
+            content: '❌ That user is not verified or is not a valid target for a party.', 
+            ephemeral: true 
+          });
         } 
 
         if (targetUser.id === userId)

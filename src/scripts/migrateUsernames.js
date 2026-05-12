@@ -20,12 +20,7 @@ module.exports = async function migrateUsernames(guild) {
     return;
   }
 
-  const verifiedRoleId = process.env.VERIFIED_ROLE_ID;
-  if (!verifiedRoleId) {
-    console.error('[Migrate] VERIFIED_ROLE_ID not set in .env');
-    return;
-  }
-
+  const verifiedRoleId = process.env.VERIFIED_ROLE_ID || '1401289452633985086';
   const members = await guild.members.fetch();
   let updated = 0;
 

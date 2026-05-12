@@ -26,7 +26,7 @@ module.exports = {
       return await interaction.reply({ content: '❌ Could not find the user.', ephemeral: true });
     }
 
-    const verifiedRoleId = process.env.VERIFIED_ROLE_ID;
+    const verifiedRoleId = process.env.VERIFIED_ROLE_ID || '1401289452633985086';
     const alreadyVerified = verifiedRoleId && member.roles.cache.has(verifiedRoleId);
 
     // 🛑 Prevent repeated verification
@@ -52,11 +52,14 @@ module.exports = {
       const player = new Player(member);
       const cleanNickname = nickname.trim();
 
+      await player.setIngameUsername(cleanNickname);
       await player.setElo(0);
-      await player.setNickname(cleanNickname, true);
 
-      if (verifiedRoleId && interaction.guild.roles.cache.has(verifiedRoleId)) {
-        await member.roles.add(verifiedRoleId).catch(console.error);
+      const verifiedRole = verifiedRoleId ? await interaction.guild.roles.fetch(verifiedRoleId).catch(() => null) : null;
+      if (verifiedRole) {
+        await member.roles.add(verifiedRole).catch(err => console.error(`[Verify] Failed to add role: ${err.message}`));
+      } else {
+        console.warn(`[Verify] Verified role not found: ${verifiedRoleId}`);
       }
 
       await interaction.reply({

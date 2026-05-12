@@ -11,12 +11,12 @@ const ELO_PATH = path.join(__dirname, '../../data/elo.json');
 
 module.exports = async function runCleanup(client, membersArg = null) {
   const guildId = process.env.GUILD_ID;
-  const verifiedRoleId = process.env.VERIFIED_ROLE_ID;
-
-  if (!guildId || !verifiedRoleId) {
-    console.error('[Cleanup] Missing GUILD_ID or VERIFIED_ROLE_ID in .env');
+  const verifiedRoleId = process.env.VERIFIED_ROLE_ID || '1401289452633985086';
+  if (!guildId) {
+    console.error('[Cleanup] Missing GUILD_ID in .env');
     return;
   }
+
 
   const guild = await client.guilds.fetch(guildId).catch(() => null);
   if (!guild) {
