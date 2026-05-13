@@ -217,7 +217,7 @@ async function editLogEmbed(client, guildId, gameId, channelId, status, options 
   if (options.bedbreaker) {
     embed.addFields({ name: '🔨 Winning Bedbreaker', value: options.bedbreaker, inline: true });
   }
-  if (options.loseBedbreaker) {
+  if (options.loseBedbreaker && options.loseBedbreaker !== 'null') {
     embed.addFields({ name: '🔨 Losing Bedbreaker', value: options.loseBedbreaker, inline: true });
   }
 

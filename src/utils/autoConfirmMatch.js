@@ -127,7 +127,7 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
           description: [
             `⭐ **MVP:** **${mvpUsername}**`,
             `🔨 **Winning Bedbreaker:** **${winBedUsername}**`,
-            loseBedUsername ? `🔨 **Losing Bedbreaker:** **${loseBedUsername}**` : null,
+            loseBedUsername && loseBedUsername !== 'null' ? `🔨 **Losing Bedbreaker:** **${loseBedUsername}**` : null,
             `🏅 **Winner:** **${winnerTeam.toUpperCase()}**`,
             ``,
             `__**Winning Team:**__\n${winnerLines}`,
@@ -147,12 +147,28 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   try {
     const category = await guild.channels.fetch(match.categoryId).catch(() => null);
     if (category) {
-      const allChannels = await guild.channels.fetch();
-      const children = allChannels.filter(c => c.parentId === category.id);
+      const waitingRoomId = process.env.WAITING_ROOM_VOICE_ID;
+      const waitingRoom = waitingRoomId ? await guild.channels.fetch(waitingRoomId).catch(() => null) : null;
+
+      const children = category.children.cache;
+      
+      // Move any players left in voice channels to waiting room
+      const voiceChannels = children.filter(c => c.type === 2); // 2 is GuildVoice
+      for (const [, vc] of voiceChannels) {
+        if (waitingRoom) {
+          await Promise.all(vc.members.map(m => m.voice.setChannel(waitingRoom).catch(() => {})));
+        }
+      }
+
+      // Small delay to ensure moves are processed before deletion
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       for (const [, ch] of children) await ch.delete().catch(() => {});
       await category.delete().catch(() => {});
     }
-  } catch {}
+  } catch (err) {
+    console.error(`[autoConfirmMatch] Cleanup error: ${err.message}`);
+  }
 
   // --- Update logs and match state ---
   try {

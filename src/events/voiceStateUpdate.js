@@ -49,9 +49,11 @@ module.exports = {
     // ───── Blacklist Check ─────
     if (newChannelId && ALL_QUEUE_IDS.includes(newChannelId)) {
       if (newState.member.roles.cache.has(BLACKLISTED_ROLE_ID)) {
-        await newState.member.voice.disconnect().catch(() => {});
-        await newState.member.send('🚫 You are blacklisted from joining queue channels.').catch(() => {});
-        console.log(`[BlacklistCheck] Disconnected blacklisted player ${newState.member.displayName} from queue channel ${newChannelId}`);
+        await moveToWaitingRoom(
+          newState.member,
+          '🚫 You are blacklisted from joining queue channels.'
+        );
+        console.log(`[BlacklistCheck] Moved blacklisted player ${newState.member.displayName} to waiting room from ${newChannelId}`);
         return;
       }
     }
@@ -105,18 +107,22 @@ async function handleEloQueue(newState, eloQueue, party = null) {
     // Filter banned and ELO-ineligible players
     const validated = [];
     for (const member of players) {
-      // 🚫 Banned players → disconnect
+      // 🚫 Banned players → move to waiting room
       if (member.roles.cache.has(RANKED_BANNED_ROLE_ID)) {
-        await member.voice.disconnect().catch(() => {});
-        await member.send('🚫 You are ranked banned and cannot queue.').catch(() => {});
-        console.log(`[BanCheck] Disconnected banned player ${member.displayName}`);
+        await moveToWaitingRoom(
+          member,
+          '🚫 You are ranked banned and cannot queue.'
+        );
+        console.log(`[BanCheck] Moved banned player ${member.displayName} to waiting room`);
         continue;
       }
 
       if (member.roles.cache.has(BLACKLISTED_ROLE_ID)) {
-        await member.voice.disconnect().catch(() => {});
-        await member.send('🚫 You are blacklisted from joining queue channels.').catch(() => {});
-        console.log(`[BlacklistCheck] Disconnected blacklisted player ${member.displayName} from queue channel ${vcId}`);
+        await moveToWaitingRoom(
+          member,
+          '🚫 You are blacklisted from joining queue channels.'
+        );
+        console.log(`[BlacklistCheck] Moved blacklisted player ${member.displayName} to waiting room from ${vcId}`);
         continue;
       }
 
@@ -164,12 +170,14 @@ async function handleStandardQueue(newState, party = null) {
     ? party.members.map(id => newState.guild.members.cache.get(id)).filter(Boolean)
     : [...newState.channel.members.values()];
 
-  // 🚫 Banned players → disconnect
+  // 🚫 Banned players → move to waiting room
   for (const member of members) {
     if (member.roles.cache.has(RANKED_BANNED_ROLE_ID)) {
-      await member.voice.disconnect().catch(() => {});
-      await member.send('🚫 You are ranked banned and cannot queue.').catch(() => {});
-      console.log(`[BanCheck] Disconnected banned player ${member.displayName}`);
+      await moveToWaitingRoom(
+        member,
+        '🚫 You are ranked banned and cannot queue.'
+      );
+      console.log(`[BanCheck] Moved banned player ${member.displayName} to waiting room`);
       return;
     }
   }
@@ -230,10 +238,16 @@ async function handleCategoryCleanup(leftChannel) {
 
   if (!allEmpty) return;
 
-  console.log(`[Cleanup] All voice channels in game #${gameId} are empty. Deleting...`);
+  console.log(`[Cleanup] All voice channels in game #${gameId} are empty or moving. Deleting...`);
   deletedCategories.add(categoryId);
 
+  const waitingRoomId = process.env.WAITING_ROOM_VOICE_ID;
+  const waitingRoom = waitingRoomId ? leftChannel.guild.channels.cache.get(waitingRoomId) : null;
+
   for (const channel of category.children.cache.values()) {
+    if (channel.type === ChannelType.GuildVoice && waitingRoom) {
+      await Promise.all(channel.members.map(m => m.voice.setChannel(waitingRoom).catch(() => {})));
+    }
     await channel.delete().catch(err => { if (err.code !== 10003) console.error(err); });
   }
 
