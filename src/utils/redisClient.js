@@ -51,19 +51,31 @@ async function publishMatch(matchData) {
   }
 }
 
+async function publishPlayerOnline(username, status) {
+  const channel = 'player.online';
+  try {
+    const payload = JSON.stringify({ username, status });
+    await redis.publish(channel, payload);
+    console.log(`[Redis] Player ${username} status "${status}" published to ${channel}`);
+  } catch (err) {
+    console.error('[Redis] Failed to publish player online event:', err);
+  }
+}
+
 function setupResultListener(client) {
-  const channel = process.env.REDIS_RESULTS_CHANNEL || 'minecraft.results';
+  const resultsChannel = process.env.REDIS_RESULTS_CHANNEL || 'minecraft.results';
+  const onlineChannel = 'player.online';
   
-  console.log(`[Redis-Sub] Subscribing to ${channel}...`);
-  redisSub.subscribe(channel);
+  console.log(`[Redis-Sub] Subscribing to ${resultsChannel} and ${onlineChannel}...`);
+  redisSub.subscribe(resultsChannel, onlineChannel);
 
   redisSub.on('message', async (chan, message) => {
-    if (chan === channel) {
-      try {
-        const data = JSON.parse(message);
+    try {
+      const data = JSON.parse(message);
+
+      if (chan === resultsChannel) {
         console.log(`[Redis-Sub] Received result for Match #${data.matchId}`);
 
-        // Lazy load to avoid circular dependency or early load issues
         const autoConfirmMatch = require('./autoConfirmMatch');
         const guild = await client.guilds.fetch(process.env.GUILD_ID);
 
@@ -78,10 +90,51 @@ function setupResultListener(client) {
           winBedbreaker: data.winBedbreaker,
           loseBedbreaker: data.loseBedbreaker
         });
+      } 
+      
+      else if (chan === onlineChannel) {
+        // Ignore our own requests (if we send "check")
+        if (data.status === 'check') return;
 
-      } catch (err) {
-        console.error('[Redis-Sub] Error processing match result:', err);
+        console.log(`[Redis-Sub] Player ${data.username} is ${data.status} (from plugin)`);
+        
+        if (data.status === 'offline') {
+          try {
+            const guildId = process.env.GUILD_ID;
+            const waitingRoomId = process.env.WAITING_ROOM_VOICE_ID;
+            
+            if (!guildId || !waitingRoomId) return;
+
+            const guild = await client.guilds.fetch(guildId);
+            if (!guild) return;
+
+            // Find member by their linked ingameUsername or discord username
+            // We search members to find the one matching the reported username
+            const members = await guild.members.fetch();
+            const member = members.find(m => {
+              // This is a bit heavy but necessary if we only have the username from Redis
+              // Ideally the Redis data would include the Discord ID to make this faster
+              const Player = require('../models/Player');
+              // We'll check the local cache/file if possible or just check display/tag
+              return m.user.username === data.username || m.displayName.includes(data.username);
+            });
+
+            if (member && member.voice.channelId && member.voice.channelId !== waitingRoomId) {
+              const waitingRoom = await guild.channels.fetch(waitingRoomId);
+              if (waitingRoom) {
+                await member.voice.setChannel(waitingRoom);
+                await member.send(`⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to queue.`).catch(() => {});
+                console.log(`[Redis-Sub] Moved ${member.displayName} to waiting room (Offline)`);
+              }
+            }
+          } catch (err) {
+            console.error('[Redis-Sub] Error moving offline player:', err);
+          }
+        }
       }
+
+    } catch (err) {
+      console.error(`[Redis-Sub] Error processing message on ${chan}:`, err);
     }
   });
 }
@@ -90,5 +143,6 @@ module.exports = {
   redis,
   redisSub,
   publishMatch,
+  publishPlayerOnline,
   setupResultListener
 };

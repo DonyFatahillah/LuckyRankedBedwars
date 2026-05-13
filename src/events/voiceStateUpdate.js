@@ -8,6 +8,7 @@ const Player = require('../models/Player');
 const eloQueues = require('../config/eloQueues');
 const { getPartyByUser } = require('../utils/partySystem');
 const { trackJoin, trackLeave } = require('../utils/voiceJoinTracker');
+const { publishPlayerOnline } = require('../utils/redisClient');
 require('dotenv').config({ path: __dirname + '/../.env' });
 
 const RANKED_BANNED_ROLE_ID = process.env.RANKED_BANNED_ROLE_ID;
@@ -76,6 +77,16 @@ module.exports = {
     // ───── Queue Join Logic ─────
     if (newChannelId) {
       const eloQueue = eloQueues.find(q => q.voiceChannelId === newChannelId);
+      const isStandardQueue = ALL_QUEUE_IDS.includes(newChannelId);
+
+      if (eloQueue || isStandardQueue) {
+        // Load player to get linked Minecraft username
+        const player = await Player.load(newState.member);
+        const username = player.ingameUsername || newState.member.user.username;
+
+        await publishPlayerOnline(username, 'check');
+      }
+
       if (eloQueue) {
         await handleEloQueue(newState, eloQueue, party);
       } else {
