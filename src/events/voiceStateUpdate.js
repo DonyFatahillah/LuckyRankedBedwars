@@ -84,7 +84,8 @@ module.exports = {
         const player = await Player.load(newState.member);
         const username = player.ingameUsername || newState.member.user.username;
 
-        await publishPlayerOnline(username, 'check');
+        // Send both ID and username to avoid heavy member lookups later
+        await publishPlayerOnline(newState.member.id, username, 'check');
       }
 
       if (eloQueue) {

@@ -51,12 +51,12 @@ async function publishMatch(matchData) {
   }
 }
 
-async function publishPlayerOnline(username, status) {
+async function publishPlayerOnline(userId, username, status) {
   const channel = 'player.online';
   try {
-    const payload = JSON.stringify({ username, status });
+    const payload = JSON.stringify({ id: userId, username, status });
     await redis.publish(channel, payload);
-    console.log(`[Redis] Player ${username} status "${status}" published to ${channel}`);
+    console.log(`[Redis] Player ${username} (${userId}) status "${status}" published to ${channel}`);
   } catch (err) {
     console.error('[Redis] Failed to publish player online event:', err);
   }
@@ -103,21 +103,13 @@ function setupResultListener(client) {
             const guildId = process.env.GUILD_ID;
             const waitingRoomId = process.env.WAITING_ROOM_VOICE_ID;
             
-            if (!guildId || !waitingRoomId) return;
+            if (!guildId || !waitingRoomId || !data.id) return;
 
             const guild = await client.guilds.fetch(guildId);
             if (!guild) return;
 
-            // Find member by their linked ingameUsername or discord username
-            // We search members to find the one matching the reported username
-            const members = await guild.members.fetch();
-            const member = members.find(m => {
-              // This is a bit heavy but necessary if we only have the username from Redis
-              // Ideally the Redis data would include the Discord ID to make this faster
-              const Player = require('../models/Player');
-              // We'll check the local cache/file if possible or just check display/tag
-              return m.user.username === data.username || m.displayName.includes(data.username);
-            });
+            // Instantly fetch the specific member by ID - No more rate-limiting search!
+            const member = await guild.members.fetch(data.id).catch(() => null);
 
             if (member && member.voice.channelId && member.voice.channelId !== waitingRoomId) {
               const waitingRoom = await guild.channels.fetch(waitingRoomId);
