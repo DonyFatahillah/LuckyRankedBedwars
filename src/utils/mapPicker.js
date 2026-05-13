@@ -23,7 +23,14 @@ function getRandomMap() {
   return mapList[Math.floor(Math.random() * mapList.length)];
 }
 
+function getRandomMaps(count = 3) {
+  if (mapList.length === 0) return ['Unknown Map'];
+  const shuffled = [...mapList].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, Math.min(count, mapList.length));
+}
+
 module.exports = {
   loadMapList,
-  getRandomMap
+  getRandomMap,
+  getRandomMaps
 };

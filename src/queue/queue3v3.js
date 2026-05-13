@@ -9,7 +9,7 @@ module.exports = {
    * @param {Guild} guild
    * @param {GuildMember[]} members
    */
-  async handleQueue(guild, members) {
+  async handleQueue(guild, members, eloQueue = null) {
     try {
       console.log('[Queue3v3] handleQueue triggered');
 
@@ -29,7 +29,10 @@ module.exports = {
       const selectedPlayers = eligiblePlayers.slice(0, this.expectedCount);
 
       // Create the match
-      await queueManager.createMatch(guild, selectedPlayers, 3, { isPartyMatch: true });
+      await queueManager.createMatch(guild, selectedPlayers, 3, { 
+        isPartyMatch: true,
+        eloQueue: eloQueue
+      });
 
       // Split into teams
       const team1 = selectedPlayers.slice(0, 3);

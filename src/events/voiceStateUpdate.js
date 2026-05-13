@@ -16,6 +16,7 @@ const WAITING_ROOM_VOICE_ID = process.env.WAITING_ROOM_VOICE_ID;
 
 const queueHandlers = {
   [process.env.QUEUE_1V1_TEST_ID]: queue1v1,
+  [process.env.QUEUE_1V1_TEST2_ID]: queue1v1,
   [process.env.QUEUE_2V2_TEST_ID]: queue2v2,
   [process.env.QUEUE_3V3_TEST_ID]: queue3v3,
   [process.env.QUEUE_4V4_TEST_ID]: queue4v4,
@@ -144,7 +145,7 @@ async function handleEloQueue(newState, eloQueue, party = null) {
 
     console.log(`[Validate Queue] Starting ${eloQueue.type} match with ${validated.length} players.`);
     const queueModule = require(`../queue/queue${eloQueue.type}`);
-    await queueModule.handleQueue(newState.guild, validated);
+    await queueModule.handleQueue(newState.guild, validated, eloQueue);
 
   } catch (err) {
     console.error(`[ELO Queue Error]`, err);
@@ -177,7 +178,10 @@ async function handleStandardQueue(newState, party = null) {
     console.log(`[Queue] Triggered ${queue.expectedCount}v${queue.expectedCount} queue with ${members.length} members.`);
     try {
       queueLocks.set(vcId, true);
-      await queue.handleQueue(newState.guild, members);
+      
+      // Force high-tier logic for the test queue
+      const config = vcId === process.env.QUEUE_1V1_TEST2_ID ? { minElo: 9999 } : null;
+      await queue.handleQueue(newState.guild, members, config);
     } catch (err) {
       console.error(`[Queue Error] Failed in VC ${vcId}:`, err);
     } finally {

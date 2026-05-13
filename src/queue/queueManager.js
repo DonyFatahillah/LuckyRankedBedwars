@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
-const { ChannelType, PermissionFlagsBits } = require('discord.js');
+const { ChannelType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
 require('dotenv').config({ path: path.join(__dirname, '/../.env') });
 const mapPicker = require('../utils/mapPicker');
 const ActiveGameModel = require('../models/ActiveGameSchema');
@@ -165,6 +165,9 @@ async function createMatch(guild, players, teamSize, options = {}) {
   players = getEligiblePlayers(players, totalRequired, teamSize);
   if (players.length < totalRequired) return;
 
+  const eloQueue = options.eloQueue;
+  const isHighTier = eloQueue && eloQueue.minElo >= 600;
+
   const hex = generateHexCode();
   const team1 = players.slice(0, teamSize);
   const team2 = players.slice(teamSize, teamSize * 2);
@@ -201,55 +204,132 @@ async function createMatch(guild, players, teamSize, options = {}) {
       ], true)
     });
 
+    let selectedMap;
     const vcs = [];
-    for (let i = 0; i < teams.length; i++) {
-      const vc = await guild.channels.create({
-        name: `#${hex} Team ${i + 1}`,
+
+    if (isHighTier) {
+      // 1. Create Waiting Room VC
+      const waitingRoom = await guild.channels.create({
+        name: `🕒 Waiting Room #${hex}`,
         type: ChannelType.GuildVoice,
         parent: category.id,
-        permissionOverwrites: getPermissionOverwrites(teams[i], PermissionFlagsBits.Connect, false)
+        permissionOverwrites: getPermissionOverwrites(players, PermissionFlagsBits.Connect, false)
       });
-      vcs.push(vc.id);
+
+      // 2. Move players to Waiting Room (Parallel)
+      await Promise.all(players.map(async p => {
+        const member = await guild.members.fetch(p.id).catch(() => null);
+        if (member) return member.voice.setChannel(waitingRoom).catch(() => {});
+      }));
+
+      // 3. Map Voting
+      const maps = mapPicker.getRandomMaps(3);
+      const row = new ActionRowBuilder().addComponents(
+        maps.map((map, index) => 
+          new ButtonBuilder()
+            .setCustomId(`map_vote_${index}`)
+            .setLabel(map)
+            .setStyle(ButtonStyle.Primary)
+        )
+      );
+
+      const voteEmbed = {
+        title: "🗺️ Map Selection",
+        description: "Vote for the map you want to play! You have 20 seconds.",
+        fields: maps.map((m, i) => ({ name: `Map ${i + 1}`, value: m, inline: true })),
+        color: 0x0099ff
+      };
+
+      const voteMessage = await textChannel.send({
+        content: players.map(p => `<@${p.id}>`).join(' '),
+        embeds: [voteEmbed],
+        components: [row]
+      });
+
+      const votes = new Array(maps.length).fill(0);
+      const voterIds = new Set();
+
+      const collector = voteMessage.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        time: 20000
+      });
+
+      collector.on('collect', async i => {
+        if (!players.some(p => p.id === i.user.id)) {
+          return i.reply({ content: "You are not in this match!", ephemeral: true });
+        }
+        if (voterIds.has(i.user.id)) {
+          return i.reply({ content: "You already voted!", ephemeral: true });
+        }
+
+        const index = parseInt(i.customId.split('_')[2]);
+        votes[index]++;
+        voterIds.add(i.user.id);
+        await i.reply({ content: `You voted for **${maps[index]}**!`, ephemeral: true });
+      });
+
+      await new Promise(resolve => collector.on('end', resolve));
+
+      const maxVotes = Math.max(...votes);
+      const winners = maps.filter((_, index) => votes[index] === maxVotes);
+      selectedMap = winners[Math.floor(Math.random() * winners.length)];
+
+      await voteMessage.edit({
+        content: `✅ **Selected Map:** ${selectedMap}`,
+        embeds: [],
+        components: []
+      });
+
+      // 4. Create Team VCs
+      for (let i = 0; i < teams.length; i++) {
+        const vc = await guild.channels.create({
+          name: `#${hex} Team ${i + 1}`,
+          type: ChannelType.GuildVoice,
+          parent: category.id,
+          permissionOverwrites: getPermissionOverwrites(teams[i], PermissionFlagsBits.Connect, false)
+        });
+        vcs.push(vc.id);
+      }
+
+      // 5. Move players to Team VCs
+      await movePlayersToVoiceChannels(guild, teams, category.id, vcs);
+      
+      // 6. Delete Waiting Room
+      await waitingRoom.delete().catch(() => {});
+
+    } else {
+      // Normal flow
+      selectedMap = mapPicker.getRandomMap();
+      for (let i = 0; i < teams.length; i++) {
+        const vc = await guild.channels.create({
+          name: `#${hex} Team ${i + 1}`,
+          type: ChannelType.GuildVoice,
+          parent: category.id,
+          permissionOverwrites: getPermissionOverwrites(teams[i], PermissionFlagsBits.Connect, false)
+        });
+        vcs.push(vc.id);
+      }
+      await movePlayersToVoiceChannels(guild, teams, category.id, vcs);
     }
 
     const teamMentions = teams.map(team => team.map(m => `<@${m.id}>`));
     const teamCaptainsMention = captains.map(id => `<@${id}>`);
-    const randomMap = mapPicker.getRandomMap();
-    const mapInfo = `🗺️ **Map:** ${randomMap}\n\n`;
-
-    const playerInstances = await Promise.all(
-      teams.flat().map(async m => new Player(m))
-    );
-  /*
-    const partyInviteLines = playerInstances.map(player =>
-      `\`/party invite ${player.ingameUsername || player.discordUsername}\``
-    ).join('\n');
-
-    const partyTip = 
-      mapInfo +
-      `💡 **Party Commands Tip:**\n` +
-      `\`/party create\`\n` +
-      `\`/party slot ${players.length}\` (based on queue size)\n` +
-      partyInviteLines +
-      `\n\`/host\``;
-      */
 
     const embeds = [
       {
         title: `Welcome to Match #${hex}`,
         description:
-          `🗺️ **Map:** ${randomMap}\n\n` +
+          `🗺️ **Map:** ${selectedMap}\n\n` +
           `👑 **Team Captains:**\n• Team 1: ${teamCaptainsMention[0]}\n• Team 2: ${teamCaptainsMention[1]}\n\n` +
           `👥 **Teams:**\n• **Team 1:** ${teamMentions[0].join(', ')}\n• **Team 2:** ${teamMentions[1].join(', ')}\n\n` +
-          `📜 **Match Rules:**\n• Note: ${rules.note}\n\n` +
+          `📜 **Match Rules:**\n• Note: Standard rules apply.\n\n` +
           `${rules.rulesEmbed || ''}`,
         color: 0x00ff00
       }
     ];
 
     await textChannel.send({ embeds });
-    await textChannel.send(players.map(p => `<@${p.id}>`).join(' '));
-    await movePlayersToVoiceChannels(guild, teams, category.id);
+    if (!isHighTier) await textChannel.send(players.map(p => `<@${p.id}>`).join(' '));
 
     const matchData = {
       gameId: hex,
@@ -262,7 +342,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
       voiceAId: vcs[0],
       voiceBId: vcs[1],
       queueType: `${teamSize}v${teamSize}`,
-      map: randomMap,
+      map: selectedMap,
       startedAt: Date.now(),
       status: 'pending',
       rules,
@@ -365,20 +445,27 @@ function getPermissionOverwrites(players, permissions, isTextChannel = false) {
 // -------------------------
 // Move players
 // -------------------------
-async function movePlayersToVoiceChannels(guild, teams, categoryId) {
-  const allChannels = await guild.channels.fetch();
-  const voiceChannels = Array.from(allChannels.values())
-    .filter(c => c.parentId === categoryId && c.type === ChannelType.GuildVoice)
-    .sort((a, b) => a.name.localeCompare(b.name));
+async function movePlayersToVoiceChannels(guild, teams, categoryId, specificVoiceIds = null) {
+  let voiceChannels;
+  
+  if (specificVoiceIds && specificVoiceIds.length > 0) {
+    const allChannels = await guild.channels.fetch();
+    voiceChannels = specificVoiceIds.map(id => allChannels.get(id)).filter(Boolean);
+  } else {
+    const allChannels = await guild.channels.fetch();
+    voiceChannels = Array.from(allChannels.values())
+      .filter(c => c.parentId === categoryId && c.type === ChannelType.GuildVoice)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
 
   teams.forEach((team, i) => team.forEach(p => p.targetVC = voiceChannels[i]));
 
-  for (const team of teams) {
-    for (const p of team) {
-      const member = await guild.members.fetch(p.id).catch(() => null);
-      if (member && p.targetVC) await member.voice.setChannel(p.targetVC).catch(() => {});
-    }
-  }
+  const movePromises = teams.flat().map(async p => {
+    const member = await guild.members.fetch(p.id).catch(() => null);
+    if (member && p.targetVC) return member.voice.setChannel(p.targetVC).catch(() => {});
+  });
+
+  await Promise.all(movePromises);
 }
 
 // -------------------------
