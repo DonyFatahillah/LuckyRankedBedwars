@@ -1,7 +1,6 @@
 const Redis = require('ioredis');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
-const onlineRedisConfig = require('../config/onlineRedis');
 
 const redis = new Redis({
   host: process.env.REDIS_HOST || '127.0.0.1',
@@ -25,16 +24,12 @@ const redisSub = new Redis({
   }
 });
 
-const onlineRedis = new Redis({
-  host: onlineRedisConfig.host,
-  port: onlineRedisConfig.port,
-  username: onlineRedisConfig.username,
-  password: onlineRedisConfig.password,
-  retryStrategy(times) {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  }
-});
+const PLAYER_STATUS_KEY_PREFIX = 'player.online.status:';
+const PLAYER_STATUS_TTL_SECONDS = 30;
+
+function getPlayerStatusKey(userId) {
+  return `${PLAYER_STATUS_KEY_PREFIX}${userId}`;
+}
 
 redis.on('error', (err) => {
   console.error('[Redis] Connection Error:', err.message);
@@ -52,14 +47,6 @@ redisSub.on('connect', () => {
   console.log('[Redis-Sub] Connected to server.');
 });
 
-onlineRedis.on('error', (err) => {
-  console.error('[OnlineRedis] Connection Error:', err.message);
-});
-
-onlineRedis.on('connect', () => {
-  console.log('[OnlineRedis] Connected to server.');
-});
-
 async function publishMatch(matchData) {
   const channel = process.env.REDIS_CHANNEL || 'minecraft.matches';
   try {
@@ -71,97 +58,35 @@ async function publishMatch(matchData) {
   }
 }
 
-async function getPlayerOnlineStatus(userId, minecraftUuid, username) {
+async function publishPlayerOnline(userId, username, status) {
+  const channel = 'player.online';
   try {
-    let online = false;
-
-    if (minecraftUuid) {
-      try {
-        online = await isPlayerOnlineByUuid(minecraftUuid);
-      } catch (err) {
-        console.error('[OnlineRedis] UUID lookup failed, falling back to username lookup:', err.message);
-        online = username ? await isPlayerOnlineByName(username) : false;
-      }
-    } else if (username) {
-      online = await isPlayerOnlineByName(username);
-    }
-
-    return {
-      id: userId,
-      minecraftUuid: minecraftUuid || null,
-      username,
-      status: online ? 'online' : 'offline'
-    };
+    const data = { id: userId, username, status };
+    const payload = JSON.stringify(data);
+    await redis.set(getPlayerStatusKey(userId), payload, 'EX', PLAYER_STATUS_TTL_SECONDS);
+    await redis.publish(channel, payload);
+    console.log(`[Redis] Player ${username} (${userId}) status "${status}" published to ${channel}`);
   } catch (err) {
-    console.error('[OnlineRedis] Failed to get player online status:', err);
+    console.error('[Redis] Failed to publish player online event:', err);
+  }
+}
+
+async function getPlayerOnlineStatus(userId) {
+  try {
+    const payload = await redis.get(getPlayerStatusKey(userId));
+    return payload ? JSON.parse(payload) : null;
+  } catch (err) {
+    console.error('[Redis] Failed to get player online status:', err);
     return null;
-  }
-}
-
-async function isPlayerOnlineByUuid(minecraftUuid) {
-  const response = await onlineRedis.fcall('isPlayerOnline', 1, minecraftUuid);
-  return parseOnlineBooleanResponse(response, 'online');
-}
-
-async function isPlayerOnlineByName(username) {
-  const response = await onlineRedis.fcall('queryPlayerByAnyName', 1, username);
-  return parseQueryPlayerResponse(response);
-}
-
-function parseOnlineBooleanResponse(response, fieldName) {
-  if (response === null || response === undefined) return false;
-
-  if (typeof response === 'boolean') return response;
-  if (typeof response === 'number') return response !== 0;
-
-  if (typeof response === 'object') {
-    const value = response[fieldName] ?? response.online ?? response.status;
-    if (value !== undefined) return parseOnlineBooleanResponse(value, fieldName);
-    return false;
-  }
-
-  const text = String(response).trim();
-  if (!text) return false;
-
-  try {
-    return parseOnlineBooleanResponse(JSON.parse(text), fieldName);
-  } catch {
-    return ['true', 'online', '1', 'yes'].includes(text.toLowerCase());
-  }
-}
-
-function parseQueryPlayerResponse(response) {
-  if (response === null || response === undefined) return false;
-
-  if (typeof response === 'object') {
-    if (typeof response.found === 'boolean') return response.found;
-    if (typeof response.online === 'boolean') return response.online;
-    if (typeof response.status === 'boolean') return response.status;
-    if (response.data !== undefined) return parseQueryPlayerResponse(response.data);
-  }
-
-  const text = String(response).trim();
-  if (!text) return false;
-
-  try {
-    const parsed = JSON.parse(text);
-    if (typeof parsed === 'object' && parsed !== null) {
-      if (typeof parsed.found === 'boolean') return parsed.found;
-      if (typeof parsed.online === 'boolean') return parsed.online;
-      if (typeof parsed.status === 'boolean') return parsed.status;
-      if (parsed.data !== undefined) return parseQueryPlayerResponse(parsed.data);
-    }
-    return parseOnlineBooleanResponse(parsed, 'online');
-  } catch {
-    return ['true', 'online', '1', 'yes'].includes(text.toLowerCase());
   }
 }
 
 function setupResultListener(client) {
   const resultsChannel = process.env.REDIS_RESULTS_CHANNEL || 'minecraft.results';
-
-  console.log(`[Redis-Sub] Subscribing to ${resultsChannel}...`);
-  redisSub.subscribe(resultsChannel);
+  const onlineChannel = 'player.online';
+  
+  console.log(`[Redis-Sub] Subscribing to ${resultsChannel} and ${onlineChannel}...`);
+  redisSub.subscribe(resultsChannel, onlineChannel);
 
   redisSub.on('message', async (chan, message) => {
     try {
@@ -184,7 +109,45 @@ function setupResultListener(client) {
           winBedbreaker: data.winBedbreaker,
           loseBedbreaker: data.loseBedbreaker
         });
+      } 
+      
+      else if (chan === onlineChannel) {
+        if (data.id && data.status) {
+          await redis.set(getPlayerStatusKey(data.id), message, 'EX', PLAYER_STATUS_TTL_SECONDS);
+        }
+
+        // Ignore our own requests (if we send "check")
+        if (data.status === 'check') return;
+
+        console.log(`[Redis-Sub] Player ${data.username} is ${data.status} (from plugin)`);
+        
+        if (data.status === 'offline') {
+          try {
+            const guildId = process.env.GUILD_ID;
+            const waitingRoomId = process.env.WAITING_ROOM_VOICE_ID;
+            
+            if (!guildId || !waitingRoomId || !data.id) return;
+
+            const guild = await client.guilds.fetch(guildId);
+            if (!guild) return;
+
+            // Instantly fetch the specific member by ID - No more rate-limiting search!
+            const member = await guild.members.fetch(data.id).catch(() => null);
+
+            if (member && member.voice.channelId && member.voice.channelId !== waitingRoomId) {
+              const waitingRoom = await guild.channels.fetch(waitingRoomId);
+              if (waitingRoom) {
+                await member.voice.setChannel(waitingRoom);
+                await member.send(`⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to queue.`).catch(() => {});
+                console.log(`[Redis-Sub] Moved ${member.displayName} to waiting room (Offline)`);
+              }
+            }
+          } catch (err) {
+            console.error('[Redis-Sub] Error moving offline player:', err);
+          }
+        }
       }
+
     } catch (err) {
       console.error(`[Redis-Sub] Error processing message on ${chan}:`, err);
     }
@@ -194,8 +157,8 @@ function setupResultListener(client) {
 module.exports = {
   redis,
   redisSub,
-  onlineRedis,
   publishMatch,
+  publishPlayerOnline,
   getPlayerOnlineStatus,
   setupResultListener
 };

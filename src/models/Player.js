@@ -45,7 +45,6 @@ class Player {
         lastPlayedAt: 0,
         discordUsername: this.discordUsername,
         ingameUsername: null,
-        minecraftUuid: null,
         displayUsername: null
       };
     }
@@ -53,7 +52,6 @@ class Player {
     const playerStats = stats[this.id];
     this.discordUsername = playerStats.discordUsername || member.user.username;
     this.ingameUsername = playerStats.ingameUsername || null;
-    this.minecraftUuid = playerStats.minecraftUuid || null;
     this.displayUsername = playerStats.displayUsername || null;
     this.wins = playerStats.wins ?? 0;
     this.losses = playerStats.losses ?? 0;
@@ -75,10 +73,8 @@ class Player {
       const doc = await PlayerModel.findOne({ userId: member.id });
       if (doc) {
         player.ingameUsername = doc.ingameUsername;
-        player.minecraftUuid = doc.minecraftUuid;
         player.displayUsername = doc.displayUsername;
         stats[player.id].ingameUsername = doc.ingameUsername;
-        stats[player.id].minecraftUuid = doc.minecraftUuid;
         stats[player.id].displayUsername = doc.displayUsername;
         player.elo = doc.elo;
       }
@@ -237,8 +233,7 @@ class Player {
       lastPlayedAt: this.lastPlayedAt,
       discordUsername: this.discordUsername,
       ingameUsername: this.ingameUsername,
-      displayUsername: this.displayUsername,
-      minecraftUuid: this.minecraftUuid
+      displayUsername: this.displayUsername
     };
     saveStats();
 
@@ -259,7 +254,6 @@ class Player {
           lastPlayedAt: this.lastPlayedAt,
           discordUsername: this.discordUsername,
           ingameUsername: this.ingameUsername,
-          minecraftUuid: this.minecraftUuid,
           displayUsername: this.displayUsername
         },
         { upsert: true }
@@ -289,7 +283,6 @@ class Player {
       recentlyPlayed: this.recentlyPlayed,
       discordUsername: this.discordUsername,
       ingameUsername: this.ingameUsername,
-      minecraftUuid: this.minecraftUuid,
       displayUsername: this.displayUsername
     };
   }
