@@ -30,6 +30,8 @@ const ALL_QUEUE_IDS = Object.entries(process.env)
 
 const queueLocks = new Map();
 const deletedCategories = new Set();
+const ONLINE_CHECK_TIMEOUT_MS = 5000;
+const ONLINE_CHECK_INTERVAL_MS = 250;
 
 module.exports = {
   name: 'voiceStateUpdate',
@@ -156,21 +158,14 @@ async function handleEloQueue(newState, eloQueue, party = null) {
       eloQueue.type === '4v4' ? 8 :
       2;
 
-    for (const member of validated) {
-      const player = new Player(member);
-      const username = player.ingameUsername || member.user.username;
-      const data = await getPlayerOnlineStatus(member.id);
-
-      if (data?.status === 'check') {
-        console.log(`[Validate Queue] Waiting for Redis online check: ${username} (${member.id})`);
-        return;
-      }
-    }
-
     if (validated.length < expectedCount) {
       console.log(`[Validate Queue] Not enough eligible players: ${validated.length}/${expectedCount}`);
       return;
     }
+
+    await requestOnlineChecks(validated);
+    const allOnline = await waitForOnlineChecks(validated, 'Validate Queue');
+    if (!allOnline) return;
 
     console.log(`[Validate Queue] Starting ${eloQueue.type} match with ${validated.length} players.`);
     const queueModule = require(`../queue/queue${eloQueue.type}`);
@@ -205,23 +200,91 @@ async function handleStandardQueue(newState, party = null) {
     }
   }
 
-  if (members.length >= queue.expectedCount) {
+  if (members.length < queue.expectedCount) return;
+
+  try {
+    queueLocks.set(vcId, true);
+
+    await requestOnlineChecks(members);
+    const allOnline = await waitForOnlineChecks(members, 'Queue');
+    if (!allOnline) return;
+
     console.log(`[Queue] Triggered ${queue.expectedCount}v${queue.expectedCount} queue with ${members.length} members.`);
-    try {
-      queueLocks.set(vcId, true);
-      
-      // Force high-tier logic for the test queue
-      const config = vcId === process.env.QUEUE_1V1_TEST2_ID ? { minElo: 9999 } : null;
-      await queue.handleQueue(newState.guild, members, config);
-    } catch (err) {
-      console.error(`[Queue Error] Failed in VC ${vcId}:`, err);
-    } finally {
-      setTimeout(() => queueLocks.set(vcId, false), 3000);
-    }
+
+    // Force high-tier logic for the test queue
+    const config = vcId === process.env.QUEUE_1V1_TEST2_ID ? { minElo: 9999 } : null;
+    await queue.handleQueue(newState.guild, members, config);
+  } catch (err) {
+    console.error(`[Queue Error] Failed in VC ${vcId}:`, err);
+  } finally {
+    setTimeout(() => queueLocks.set(vcId, false), 3000);
   }
 }
 
-// ───── Move to Waiting Room (for ELO-ineligible players) ─────
+async function requestOnlineChecks(members) {
+  await Promise.all(members.map(async member => {
+    const player = await Player.load(member);
+    const username = player.ingameUsername || member.user.username;
+    await publishPlayerOnline(member.id, username, 'check');
+  }));
+}
+
+async function waitForOnlineChecks(members, logPrefix) {
+  const deadline = Date.now() + ONLINE_CHECK_TIMEOUT_MS;
+  let statuses = await getOnlineStatuses(members);
+
+  while (hasPendingOnlineCheck(statuses) && Date.now() < deadline) {
+    const pending = statuses
+      .filter(({ data }) => !data || data.status === 'check')
+      .map(({ member }) => `${member.displayName} (${member.id})`)
+      .join(', ');
+
+    console.log(`[${logPrefix}] Waiting for Redis online check: ${pending}`);
+    await sleep(ONLINE_CHECK_INTERVAL_MS);
+    statuses = await getOnlineStatuses(members);
+  }
+
+  const unresolved = statuses.filter(({ data }) => !data || data.status === 'check');
+  if (unresolved.length > 0) {
+    console.log(`[${logPrefix}] Redis online check timed out for: ${formatMembers(unresolved)}`);
+    return false;
+  }
+
+  const offline = statuses.filter(({ data }) => data.status !== 'online');
+  if (offline.length > 0) {
+    console.log(`[${logPrefix}] Queue blocked by non-online players: ${formatStatusMembers(offline)}`);
+    return false;
+  }
+
+  return true;
+}
+
+async function getOnlineStatuses(members) {
+  return Promise.all(members.map(async member => ({
+    member,
+    data: await getPlayerOnlineStatus(member.id)
+  })));
+}
+
+function hasPendingOnlineCheck(statuses) {
+  return statuses.some(({ data }) => !data || data.status === 'check');
+}
+
+function formatMembers(entries) {
+  return entries.map(({ member }) => `${member.displayName} (${member.id})`).join(', ');
+}
+
+function formatStatusMembers(entries) {
+  return entries
+    .map(({ member, data }) => `${member.displayName} (${member.id}): ${data?.status || 'unknown'}`)
+    .join(', ');
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// â”€â”€â”€â”€â”€ Move to Waiting Room (for ELO-ineligible players) â”€â”€â”€â”€â”€
 async function moveToWaitingRoom(member, message) {
   try {
     if (!WAITING_ROOM_VOICE_ID) return;
