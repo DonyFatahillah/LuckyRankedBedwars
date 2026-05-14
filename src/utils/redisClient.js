@@ -59,7 +59,7 @@ async function publishMatch(matchData) {
 }
 
 async function publishMatchVoid(matchData) {
-  const channel = process.env.REDIS_CHANNEL_VOID || 'minecraft.matches.void';
+  const channel = process.env.REDIS_CHANNEL || 'minecraft.matche.void';
   try {
     const payload = JSON.stringify(matchData);
     await redis.publish(channel, payload);
@@ -149,7 +149,7 @@ function setupResultListener(client) {
               const waitingRoom = await guild.channels.fetch(waitingRoomId);
               if (waitingRoom) {
                 await member.voice.setChannel(waitingRoom);
-                await member.send(`⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to queue the match.`).catch(() => {});
+                await member.send(`⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to queue.`).catch(() => {});
                 console.log(`[Redis-Sub] Moved ${member.displayName} to waiting room (Offline)`);
               }
             }
