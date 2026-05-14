@@ -149,7 +149,7 @@ function setupResultListener(client) {
               const waitingRoom = await guild.channels.fetch(waitingRoomId);
               if (waitingRoom) {
                 await member.voice.setChannel(waitingRoom);
-                await member.send(`⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to queue.`).catch(() => {});
+                await member.send(`⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to queue the match.`).catch(() => {});
                 console.log(`[Redis-Sub] Moved ${member.displayName} to waiting room (Offline)`);
               }
             }
@@ -161,6 +161,7 @@ function setupResultListener(client) {
 
     } catch (err) {
       console.error(`[Redis-Sub] Error processing message on ${chan}:`, err);
+      
     }
   });
 }
