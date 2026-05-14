@@ -63,7 +63,7 @@ async function publishMatchVoid(matchData) {
   try {
     const payload = JSON.stringify(matchData);
     await redis.publish(voidchannel, payload);
-    console.log(`[Redis] Match #${matchData.matchId} published to ${channel}`);
+    console.log(`[Redis] Match #${matchData.matchId} published to ${voidchannel}`);
   } catch (err) {
     console.error('[Redis] Failed to publish match:', err);
   }
