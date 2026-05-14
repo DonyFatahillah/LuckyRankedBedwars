@@ -24,6 +24,13 @@ const redisSub = new Redis({
   }
 });
 
+const PLAYER_STATUS_KEY_PREFIX = 'player.online.status:';
+const PLAYER_STATUS_TTL_SECONDS = 30;
+
+function getPlayerStatusKey(userId) {
+  return `${PLAYER_STATUS_KEY_PREFIX}${userId}`;
+}
+
 redis.on('error', (err) => {
   console.error('[Redis] Connection Error:', err.message);
 });
@@ -54,11 +61,23 @@ async function publishMatch(matchData) {
 async function publishPlayerOnline(userId, username, status) {
   const channel = 'player.online';
   try {
-    const payload = JSON.stringify({ id: userId, username, status });
+    const data = { id: userId, username, status };
+    const payload = JSON.stringify(data);
+    await redis.set(getPlayerStatusKey(userId), payload, 'EX', PLAYER_STATUS_TTL_SECONDS);
     await redis.publish(channel, payload);
     console.log(`[Redis] Player ${username} (${userId}) status "${status}" published to ${channel}`);
   } catch (err) {
     console.error('[Redis] Failed to publish player online event:', err);
+  }
+}
+
+async function getPlayerOnlineStatus(userId) {
+  try {
+    const payload = await redis.get(getPlayerStatusKey(userId));
+    return payload ? JSON.parse(payload) : null;
+  } catch (err) {
+    console.error('[Redis] Failed to get player online status:', err);
+    return null;
   }
 }
 
@@ -93,6 +112,10 @@ function setupResultListener(client) {
       } 
       
       else if (chan === onlineChannel) {
+        if (data.id && data.status) {
+          await redis.set(getPlayerStatusKey(data.id), message, 'EX', PLAYER_STATUS_TTL_SECONDS);
+        }
+
         // Ignore our own requests (if we send "check")
         if (data.status === 'check') return;
 
@@ -136,5 +159,6 @@ module.exports = {
   redisSub,
   publishMatch,
   publishPlayerOnline,
+  getPlayerOnlineStatus,
   setupResultListener
 };

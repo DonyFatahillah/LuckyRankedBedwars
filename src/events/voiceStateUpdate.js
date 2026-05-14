@@ -8,7 +8,7 @@ const Player = require('../models/Player');
 const eloQueues = require('../config/eloQueues');
 const { getPartyByUser } = require('../utils/partySystem');
 const { trackJoin, trackLeave } = require('../utils/voiceJoinTracker');
-const { publishPlayerOnline } = require('../utils/redisClient');
+const { publishPlayerOnline, getPlayerOnlineStatus } = require('../utils/redisClient');
 require('dotenv').config({ path: __dirname + '/../.env' });
 
 const RANKED_BANNED_ROLE_ID = process.env.RANKED_BANNED_ROLE_ID;
@@ -155,6 +155,17 @@ async function handleEloQueue(newState, eloQueue, party = null) {
       eloQueue.type === '3v3' ? 6 :
       eloQueue.type === '4v4' ? 8 :
       2;
+
+    for (const member of validated) {
+      const player = new Player(member);
+      const username = player.ingameUsername || member.user.username;
+      const data = await getPlayerOnlineStatus(member.id);
+
+      if (data?.status === 'check') {
+        console.log(`[Validate Queue] Waiting for Redis online check: ${username} (${member.id})`);
+        return;
+      }
+    }
 
     if (validated.length < expectedCount) {
       console.log(`[Validate Queue] Not enough eligible players: ${validated.length}/${expectedCount}`);
