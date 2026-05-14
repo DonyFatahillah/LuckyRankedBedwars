@@ -8,7 +8,7 @@ const Player = require('../models/Player');
 const eloQueues = require('../config/eloQueues');
 const { getPartyByUser } = require('../utils/partySystem');
 const { trackJoin, trackLeave } = require('../utils/voiceJoinTracker');
-const { publishPlayerOnline, getPlayerOnlineStatus } = require('../utils/redisClient');
+const { getPlayerOnlineStatus } = require('../utils/redisClient');
 require('dotenv').config({ path: __dirname + '/../.env' });
 
 const RANKED_BANNED_ROLE_ID = process.env.RANKED_BANNED_ROLE_ID;
@@ -79,16 +79,6 @@ module.exports = {
     // ───── Queue Join Logic ─────
     if (newChannelId) {
       const eloQueue = eloQueues.find(q => q.voiceChannelId === newChannelId);
-      const isStandardQueue = ALL_QUEUE_IDS.includes(newChannelId);
-
-      if (eloQueue || isStandardQueue) {
-        // Load player to get linked Minecraft username
-        const player = await Player.load(newState.member);
-        const username = player.ingameUsername || newState.member.user.username;
-
-        // Send both ID and username to avoid heavy member lookups later
-        await publishPlayerOnline(newState.member.id, username, 'check');
-      }
 
       if (eloQueue) {
         await handleEloQueue(newState, eloQueue, party);
@@ -163,7 +153,6 @@ async function handleEloQueue(newState, eloQueue, party = null) {
       return;
     }
 
-    await requestOnlineChecks(validated);
     const allOnline = await waitForOnlineChecks(validated, 'Validate Queue');
     if (!allOnline) return;
 
@@ -205,7 +194,6 @@ async function handleStandardQueue(newState, party = null) {
   try {
     queueLocks.set(vcId, true);
 
-    await requestOnlineChecks(members);
     const allOnline = await waitForOnlineChecks(members, 'Queue');
     if (!allOnline) return;
 
@@ -219,14 +207,6 @@ async function handleStandardQueue(newState, party = null) {
   } finally {
     setTimeout(() => queueLocks.set(vcId, false), 3000);
   }
-}
-
-async function requestOnlineChecks(members) {
-  await Promise.all(members.map(async member => {
-    const player = await Player.load(member);
-    const username = player.ingameUsername || member.user.username;
-    await publishPlayerOnline(member.id, username, 'check');
-  }));
 }
 
 async function waitForOnlineChecks(members, logPrefix) {
@@ -260,10 +240,15 @@ async function waitForOnlineChecks(members, logPrefix) {
 }
 
 async function getOnlineStatuses(members) {
-  return Promise.all(members.map(async member => ({
-    member,
-    data: await getPlayerOnlineStatus(member.id)
-  })));
+  return Promise.all(members.map(async member => {
+    const player = await Player.load(member);
+    const username = player.ingameUsername || member.user.username;
+
+    return {
+      member,
+      data: await getPlayerOnlineStatus(member.id, player.minecraftUuid, username)
+    };
+  }));
 }
 
 function hasPendingOnlineCheck(statuses) {
