@@ -59,10 +59,10 @@ async function publishMatch(matchData) {
 }
 
 async function publishMatchVoid(matchData) {
-  const channel = process.env.REDIS_CHANNEL || 'minecraft.matche.void';
+  const voidchannel = process.env.REDIS_CHANNEL || 'minecraft.matches.void';
   try {
     const payload = JSON.stringify(matchData);
-    await redis.publish(channel, payload);
+    await redis.publish(voidchannel, payload);
     console.log(`[Redis] Match #${matchData.matchId} published to ${channel}`);
   } catch (err) {
     console.error('[Redis] Failed to publish match:', err);
@@ -95,8 +95,9 @@ async function getPlayerOnlineStatus(userId) {
 function setupResultListener(client) {
   const resultsChannel = process.env.REDIS_RESULTS_CHANNEL || 'minecraft.results';
   const onlineChannel = 'player.online';
+  const voidChannel = 'minecraft.matches.void';
   
-  console.log(`[Redis-Sub] Subscribing to ${resultsChannel} and ${onlineChannel}...`);
+  console.log(`[Redis-Sub] Subscribing to ${resultsChannel}, ${voidChannel}, and ${onlineChannel}...`);
   redisSub.subscribe(resultsChannel, onlineChannel);
 
   redisSub.on('message', async (chan, message) => {
