@@ -93,7 +93,7 @@ module.exports = {
       removedFromActive = true;
       
       // Notify Minecraft plugin via matches channel
-      await publishMatch({ matchId: gameId, action: 'void' }).catch(() => {});
+      await publishMatchVoid({ matchId: gameId, action: 'void' }).catch(() => {});
     } 
     
     // ✅ If match is already confirmed, revert ELO properly

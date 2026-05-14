@@ -58,6 +58,17 @@ async function publishMatch(matchData) {
   }
 }
 
+async function publishMatchVoid(matchData) {
+  const channel = process.env.REDIS_CHANNEL_VOID || 'minecraft.matches.void';
+  try {
+    const payload = JSON.stringify(matchData);
+    await redis.publish(channel, payload);
+    console.log(`[Redis] Match #${matchData.matchId} published to ${channel}`);
+  } catch (err) {
+    console.error('[Redis] Failed to publish match:', err);
+  }
+}
+
 async function publishPlayerOnline(userId, username, status) {
   const channel = 'player.online';
   try {
@@ -158,6 +169,7 @@ module.exports = {
   redis,
   redisSub,
   publishMatch,
+  publishMatchVoid,
   publishPlayerOnline,
   getPlayerOnlineStatus,
   setupResultListener
