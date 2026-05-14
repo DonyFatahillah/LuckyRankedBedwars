@@ -22,90 +22,95 @@ module.exports = {
   async execute(interaction) {
     await interaction.deferReply();
 
-    let currentPage = 0;
-    const sorted = eloCache.getSortedEntries();
-    const validEntries = [];
+    try {
+      let currentPage = 0;
+      const sorted = eloCache.getSortedEntries();
+      const validEntries = [];
 
-    // Optimize: Fetch players directly from database in chunks instead of fetching all members
-    const userIds = sorted.map(([id]) => id);
-    const players = await PlayerModel.find({ userId: { $in: userIds } });
-    const playerMap = new Map(players.map(p => [p.userId, p]));
+      // Optimize: Fetch players directly from database in chunks instead of fetching all members
+      const userIds = sorted.map(([id]) => id);
+      const players = await PlayerModel.find({ userId: { $in: userIds } });
+      const playerMap = new Map(players.map(p => [p.userId, p]));
 
-    for (const [userId, elo] of sorted) {
-      const playerData = playerMap.get(userId);
-      const username = playerData?.ingameUsername || `Unknown (${userId.slice(-4)})`;
-      validEntries.push({ userId, elo, username });
-    }
+      for (const [userId, elo] of sorted) {
+        const playerData = playerMap.get(userId);
+        const username = playerData?.ingameUsername || `Unknown (${userId.slice(-4)})`;
+        validEntries.push({ userId, elo, username });
+      }
 
-    const totalPages = Math.ceil(validEntries.length / PAGE_SIZE);
+      const totalPages = Math.ceil(validEntries.length / PAGE_SIZE);
 
-    // Step 2: Page renderer (uses cached validEntries)
-    function renderPage(page) {
-      const pageEntries = validEntries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+      // Step 2: Page renderer (uses cached validEntries)
+      function renderPage(page) {
+        const pageEntries = validEntries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-      const lines = pageEntries.map((entry, index) => {
-        const rank = getRankByElo(entry.elo).name;
-        return `${page * PAGE_SIZE + index + 1}. ${entry.username} — ${entry.elo} ELO — ${rank}`;
+        const lines = pageEntries.map((entry, index) => {
+          const rank = getRankByElo(entry.elo).name;
+          return `${page * PAGE_SIZE + index + 1}. ${entry.username} — ${entry.elo} ELO — ${rank}`;
+        });
+
+        const embed = new EmbedBuilder()
+          .setTitle('🏆 ELO LEADERBOARD')
+          .setDescription(lines.join('\n') || '*No players found.*')
+          .setColor(0xFFD700)
+          .setFooter({ text: `Page ${page + 1} of ${totalPages}` })
+          .setTimestamp(new Date());
+
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('prev')
+            .setLabel('⬅️ Prev')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(page === 0),
+          new ButtonBuilder()
+            .setCustomId('next')
+            .setLabel('➡️ Next')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(page >= totalPages - 1)
+        );
+
+        return { embed, row };
+      }
+
+      // Step 3: Send first page
+      let { embed, row } = renderPage(currentPage);
+      const message = await interaction.editReply({ embeds: [embed], components: [row] });
+
+      const collector = message.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        time: 60000, // 1 minute idle timeout
       });
 
-      const embed = new EmbedBuilder()
-        .setTitle('🏆 ELO LEADERBOARD')
-        .setDescription(lines.join('\n') || '*No players found.*')
-        .setColor(0xFFD700)
-        .setFooter({ text: `Page ${page + 1} of ${totalPages}` })
-        .setTimestamp(new Date());
+      collector.on('collect', async (btn) => {
+        await btn.deferUpdate();
 
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('prev')
-          .setLabel('⬅️ Prev')
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(page === 0),
-        new ButtonBuilder()
-          .setCustomId('next')
-          .setLabel('➡️ Next')
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(page >= totalPages - 1)
-      );
+        // Reset idle timeout on every interaction
+        collector.resetTimer();
 
-      return { embed, row };
+        if (btn.customId === 'prev' && currentPage > 0) currentPage--;
+        if (btn.customId === 'next' && currentPage < totalPages - 1) currentPage++;
+
+        const { embed: newEmbed, row: newRow } = renderPage(currentPage);
+        await message.edit({ embeds: [newEmbed], components: [newRow] }).catch(() => {});
+      });
+
+      collector.on('end', async () => {
+        const { embed: expiredEmbed } = renderPage(currentPage);
+        expiredEmbed.setFooter({ text: `Page ${currentPage + 1} of ${totalPages} • Interaction expired` });
+
+        // Disable buttons after idle timeout
+        const disabledRow = new ActionRowBuilder().addComponents(
+          row.components.map(btn => btn.setDisabled(true))
+        );
+
+        await message.edit({
+          embeds: [expiredEmbed],
+          components: [disabledRow],
+        }).catch(() => {});
+      });
+    } catch (error) {
+      console.error('[Leaderboard] Error fetching players:', error);
+      await interaction.editReply({ content: '❌ Failed to fetch leaderboard data. Please try again later.', ephemeral: true });
     }
-
-    // Step 3: Send first page
-    let { embed, row } = renderPage(currentPage);
-    const message = await interaction.editReply({ embeds: [embed], components: [row] });
-
-    const collector = message.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      time: 60000, // 1 minute idle timeout
-    });
-
-    collector.on('collect', async (btn) => {
-      await btn.deferUpdate();
-
-      // Reset idle timeout on every interaction
-      collector.resetTimer();
-
-      if (btn.customId === 'prev' && currentPage > 0) currentPage--;
-      if (btn.customId === 'next' && currentPage < totalPages - 1) currentPage++;
-
-      const { embed: newEmbed, row: newRow } = renderPage(currentPage);
-      await message.edit({ embeds: [newEmbed], components: [newRow] }).catch(() => {});
-    });
-
-    collector.on('end', async () => {
-      const { embed: expiredEmbed } = renderPage(currentPage);
-      expiredEmbed.setFooter({ text: `Page ${currentPage + 1} of ${totalPages} • Interaction expired` });
-
-      // Disable buttons after idle timeout
-      const disabledRow = new ActionRowBuilder().addComponents(
-        row.components.map(btn => btn.setDisabled(true))
-      );
-
-      await message.edit({
-        embeds: [expiredEmbed],
-        components: [disabledRow],
-      }).catch(() => {});
-    });
   }
 };
