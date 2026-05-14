@@ -8,7 +8,7 @@ const { logStaffCommand } = require('../../utils/staffLogger');
 const { getActiveGames, deleteActiveGame } = require('../../queue/queueManager');
 const Player = require('../../models/Player');
 const { updateMatchStatus, getLogs, editLogEmbed } = require('../../utils/matchLogger');
-const { publishMatch } = require('../../utils/redisClient');
+const { publishMatch, publishMatchVoid } = require('../../utils/redisClient');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
