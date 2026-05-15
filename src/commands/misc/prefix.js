@@ -62,17 +62,15 @@ module.exports = {
       return interaction.reply({ content: '❌ Only admins can change other users’ prefix.', ephemeral: true });
     }
 
-    const player = new Player(member);
+    const player = await Player.load(member);
 
     if (mode === 'disable') {
       await player.setPrefixEnabled(false);
-      await player.setNickname(player.username); // Removes prefix
       return interaction.reply({ content: `✅ Prefix disabled for <@${member.id}>.`, ephemeral: true });
     }
 
     if (mode === 'enable') {
       await player.setPrefixEnabled(true);
-      await player.setNickname(player.username); // Adds prefix
       return interaction.reply({ content: `✅ Prefix enabled for <@${member.id}>.`, ephemeral: true });
     }
 
