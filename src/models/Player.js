@@ -13,7 +13,7 @@ class Player {
     this.id = member.id;
     this.discordUsername = member.user.username;
     this.displayName = member.displayName;
-    this.elo = getElo(this.id);
+    this.elo = data.elo ?? 0;
 
     // Load from provided data
     this.discordUsername = data.discordUsername || member.user.username;
@@ -36,12 +36,14 @@ class Player {
   static async load(member) {
     // 1. Try to get from Redis
     let data = await getPlayerCache(member.id);
+    let elo = await getElo(member.id);
     
     // 2. If not in Redis, get from Mongo
     if (!data) {
       const doc = await PlayerModel.findOne({ userId: member.id });
       if (doc) {
         data = {
+          elo: doc.elo,
           wins: doc.wins,
           losses: doc.losses,
           winstreak: doc.winstreak,
@@ -57,6 +59,7 @@ class Player {
       } else {
         // Defaults if no doc found
         data = {
+          elo: elo,
           wins: 0,
           losses: 0,
           winstreak: 0,
@@ -74,6 +77,7 @@ class Player {
       await setPlayerCache(member.id, data);
     }
     
+    data.elo = elo;
     return new Player(member, data);
   }
 
@@ -218,6 +222,7 @@ class Player {
     
     // Data to persist
     const data = {
+      elo: this.elo,
       wins: this.wins,
       losses: this.losses,
       winstreak: this.winstreak,
@@ -240,7 +245,6 @@ class Player {
         { userId: this.id },
         {
           userId: this.id,
-          elo: this.elo,
           ...data
         },
         { upsert: true }
