@@ -36,9 +36,11 @@ module.exports = {
 
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused();
+    
+    // Get active games (stored in Redis via queueManager)
     const activeGames = await getActiveGames();
     
-    // getLogs() returns an object where keys are gameIds
+    // Get all matches (logs) from MongoDB via matchLogger
     const { getLogs } = require('../../utils/matchLogger');
     const logs = await getLogs();
 
@@ -46,7 +48,7 @@ module.exports = {
       ...activeGames.map(g => g.gameId),
       ...Object.keys(logs)
     ]
-      .filter(id => id.toLowerCase().includes(focused.toLowerCase()))
+      .filter(id => id && id.toLowerCase().includes(focused.toLowerCase()))
       .slice(0, 25);
 
     await interaction.respond(choices.map(id => ({ name: id, value: id })));
