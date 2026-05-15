@@ -8,7 +8,7 @@ class Player {
    * @param {GuildMember} member
    * @param {Object} data - Player data object
    */
-  constructor(member, data) {
+  constructor(member, data = {}) {
     this.member = member;
     this.id = member.id;
     this.discordUsername = member.user.username;
