@@ -39,10 +39,12 @@ module.exports = {
     
     // Get active games (stored in Redis via queueManager)
     const activeGames = await getActiveGames();
+    console.log(`[Void Autocomplete] Active games found: ${activeGames.length}`);
     
     // Get all matches (logs) from MongoDB via matchLogger
     const { getLogs } = require('../../utils/matchLogger');
     const logs = await getLogs();
+    console.log(`[Void Autocomplete] Logs found: ${Object.keys(logs).length}`);
 
     const choices = [
       ...activeGames.map(g => g.gameId),
@@ -51,6 +53,7 @@ module.exports = {
       .filter(id => id && id.toLowerCase().includes(focused.toLowerCase()))
       .slice(0, 25);
 
+    console.log(`[Void Autocomplete] Suggestions: ${JSON.stringify(choices)}`);
     await interaction.respond(choices.map(id => ({ name: id, value: id })));
   },
 

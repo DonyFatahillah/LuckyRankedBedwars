@@ -472,8 +472,11 @@ const { redis } = require('../utils/redisClient');
 const ActiveGame = require('../models/ActiveGame');
 
 async function setActiveGame(gameId, data) {
+  console.log(`[ActiveGames] Saving game #${gameId}. Category ID provided: ${data.categoryId}`);
+  // Ensure we are working with a complete data object
   const game = new ActiveGame(data);
   await game.save();
+  console.log(`[ActiveGames] Successfully saved game #${gameId} to Redis and Mongo.`);
 }
 
 async function updateActiveGame(gameId, updateData) {
