@@ -173,4 +173,22 @@ async function editLogEmbed(client, guildId, gameId, channelId, status, options 
   await message.edit({ embeds: [embed] });
 }
 
-module.exports = { loadLogs, saveLogs, getMatchLog, logMatch, updateMatchStatus, updateMatchDetails, sendLogToStaffChannel, editLogEmbed };
+async function getLogs() {
+  try {
+    const keys = await redis.keys('match:*');
+    const logs = {};
+    for (const key of keys) {
+      const raw = await redis.get(key);
+      if (raw) {
+        const gameId = key.split(':')[1];
+        logs[gameId] = JSON.parse(raw);
+      }
+    }
+    return logs;
+  } catch (err) {
+    console.error('[MatchLogger] Failed to get all logs from Redis:', err);
+    return {};
+  }
+}
+
+module.exports = { loadLogs, saveLogs, getMatchLog, getLogs, logMatch, updateMatchStatus, updateMatchDetails, sendLogToStaffChannel, editLogEmbed };

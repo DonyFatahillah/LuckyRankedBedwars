@@ -167,13 +167,26 @@ function setupResultListener(client) {
   });
 }
 
+const DATA_CACHE_CHANNEL = 'data.cache';
+
+async function publishDataCacheInvalidation(key) {
+  try {
+    await redis.publish(DATA_CACHE_CHANNEL, JSON.stringify({ action: 'invalidate', key }));
+    console.log(`[Redis] Invalidation event published to ${DATA_CACHE_CHANNEL} for key: ${key}`);
+  } catch (err) {
+    console.error(`[Redis] Failed to publish invalidation to ${DATA_CACHE_CHANNEL}:`, err);
+  }
+}
+
 async function setPlayerCache(userId, data) {
   try {
     await redis.set(`player.cache:${userId}`, JSON.stringify(data), 'EX', 3600); // Cache for 1 hour
+    await publishDataCacheInvalidation(`player.cache:${userId}`);
   } catch (err) {
     console.error(`[Redis] Failed to cache player ${userId}:`, err);
   }
 }
+// ... rest of the file ...
 
 async function getPlayerCache(userId) {
   try {
