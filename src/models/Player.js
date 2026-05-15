@@ -210,7 +210,7 @@ class Player {
   }
 
   async setNickname() {
-    const baseName = this.ingameUsername || this.discordUsername;
+    const baseName = this.username; // Uses getter: this.ingameUsername || this.discordUsername
     const displayPart = this.displayUsername ? ` | ${this.displayUsername}` : '';
     const prefix = this.prefixEnabled ? `[${this.elo}] ` : '';
     const nickname = `${prefix}${baseName}${displayPart}`.substring(0, 32);
