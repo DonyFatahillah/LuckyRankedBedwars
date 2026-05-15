@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const PendingLink = require('../../models/PendingLinkSchema');
-const PlayerModel = require('../../models/PlayerSchema');
+const Player = require('../../models/Player');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -25,32 +25,22 @@ module.exports = {
       });
     }
 
-    // 2. Update the user's Stats document
-    await PlayerModel.findOneAndUpdate(
-      { userId: interaction.user.id },
-      { 
-        ingameUsername: pending.username_1,
-        discordUsername: interaction.user.username
-      },
-      { upsert: true }
-    );
+    // 2. Load or create player and set username
+    const player = await Player.load(interaction.member);
+    await player.setIngameUsername(pending.username_1);
 
-    // 3. Assign Verified Role
-    const verifiedRoleId = '1401289452633985086';
+    // 3. Assign Role (Verified Role ID)
+    const verifiedRoleId = '1401289452633985086'; // Verified/Iron role ID
     try {
       await interaction.member.roles.add(verifiedRoleId);
     } catch (err) {
       console.error('[Link] Failed to add role:', err);
     }
 
-    // 4. Update Nickname
-    try {
-      await interaction.member.setNickname(pending.username_1);
-    } catch (err) {
-      console.error('[Link] Failed to set nickname:', err);
-    }
+    // 4. Update Nickname (using Player.setNickname)
+    await player.setNickname();
 
-    // 5. Delete the pending link so the code can't be used again
+    // 5. Delete the pending link
     await PendingLink.deleteOne({ _id: pending._id });
 
     const embed = new EmbedBuilder()
