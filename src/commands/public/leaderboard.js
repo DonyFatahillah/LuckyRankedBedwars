@@ -25,11 +25,13 @@ module.exports = {
     try {
       let currentPage = 0;
       const sorted = eloCache.getSortedEntries();
+      console.log(`[Leaderboard Debug] Sorted entries count: ${sorted.length}`);
       const validEntries = [];
 
       // Optimize: Fetch players directly from database in chunks instead of fetching all members
       const userIds = sorted.map(([id]) => id);
       const players = await PlayerModel.find({ userId: { $in: userIds } });
+      console.log(`[Leaderboard Debug] Players found in DB: ${players.length}`);
       const playerMap = new Map(players.map(p => [p.userId, p]));
 
       for (const [userId, elo] of sorted) {
