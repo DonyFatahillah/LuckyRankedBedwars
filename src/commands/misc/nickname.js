@@ -11,11 +11,16 @@ const ROLE3 = process.env.PROS_ROLE_ID;
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('nickname')
-    .setDescription('Change your nickname (respects ELO prefix setting)')
+    .setDescription('Change your nickname or toggle display name format')
     .addStringOption(opt =>
       opt.setName('newnick')
-        .setDescription('Your new nickname (no prefix)')
-        .setRequired(true)
+        .setDescription('Your new custom display name')
+        .setRequired(false)
+    )
+    .addBooleanOption(opt =>
+      opt.setName('display')
+        .setDescription('Enable or disable custom display name (on/off)')
+        .setRequired(false)
     )
     .addUserOption(opt =>
       opt.setName('user')
@@ -27,59 +32,42 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
     const actor = interaction.member;
     const newnick = interaction.options.getString('newnick');
+    const displayEnabled = interaction.options.getBoolean('display');
     const targetUser = interaction.options.getUser('user');
 
     const isAdmin = actor.permissions.has(PermissionFlagsBits.Administrator);
     const hasRole = r => r && actor.roles.cache.has(r);
-    const isAllowed =
-      isAdmin ||
-      hasRole(STAFF_ROLE_ID) ||
-      hasRole(NITRO_ROLE_ID) ||
-      hasRole(ROLE1) ||
-      hasRole(ROLE2) ||
-      hasRole(ROLE3);
+    const isAllowed = isAdmin || hasRole(STAFF_ROLE_ID) || hasRole(NITRO_ROLE_ID) || hasRole(ROLE1) || hasRole(ROLE2) || hasRole(ROLE3);
 
-    if (!isAllowed) {
-      return interaction.editReply({
-        content: '❌ You do not have permission to use this command.',
-        ephemeral: true
-      });
-    }
+    if (!isAllowed) return interaction.editReply({ content: '❌ You do not have permission.', ephemeral: true });
 
-    const targetMember = targetUser
-      ? await interaction.guild.members.fetch(targetUser.id).catch(() => null)
-      : actor;
-
-    if (!targetMember) {
-      return interaction.editReply({
-        content: '❌ Could not find the specified member.',
-        ephemeral: true
-      });
-    }
-
-    if (targetUser && actor.id !== targetUser.id && !isAdmin) {
-      return interaction.editReply({
-        content: '❌ Only admins can change nicknames for others.',
-        ephemeral: true
-      });
-    }
+    const targetMember = targetUser ? await interaction.guild.members.fetch(targetUser.id).catch(() => null) : actor;
+    if (!targetMember) return interaction.editReply({ content: '❌ Could not find the member.', ephemeral: true });
+    if (targetUser && actor.id !== targetUser.id && !isAdmin) return interaction.editReply({ content: '❌ Only admins can change nicknames for others.', ephemeral: true });
 
     const player = await Player.load(targetMember);
 
     try {
-      // Set the displayUsername which will update the full nickname automatically via save()
-      await player.setDisplayUsername(newnick);
+      // 1. If setting a new display nickname
+      if (newnick) {
+        await player.setDisplayUsername(newnick);
+      }
 
-      return interaction.editReply({
-        content: `✅ Display name updated for <@${targetMember.id}> to \`${newnick}\`.`,
-        ephemeral: true
-      });
+      // 2. Handle display toggle
+      if (displayEnabled !== null) {
+        if (displayEnabled && !player.displayUsername) {
+          return interaction.editReply({ content: '❌ You haven\'t set any custom nickname yet. Use `/nickname newnick:yourname` first.', ephemeral: true });
+        }
+        // Assuming we need a property to track if display is enabled or disabled
+        // If your Player class doesn't have a 'displayEnabled' flag, we might need to add one.
+        // For now, let's treat displayEnabled = true as setting displayUsername, false as nulling it.
+        await player.setDisplayUsername(displayEnabled ? (player.displayUsername || newnick) : null);
+      }
+      
+      return interaction.editReply({ content: `✅ Updated settings for <@${targetMember.id}>.`, ephemeral: true });
     } catch (err) {
-      console.warn(`[nickname] Failed to set nickname for ${targetMember.id}:`, err.message);
-      return interaction.editReply({
-        content: '❌ Failed to change nickname (maybe insufficient permissions).',
-        ephemeral: true
-      });
+      console.warn(`[nickname] Failed:`, err.message);
+      return interaction.editReply({ content: '❌ Failed to change nickname settings.', ephemeral: true });
     }
   }
 };
