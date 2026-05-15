@@ -13,8 +13,8 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   gameId = String(gameId).toUpperCase();
   const { winner, winBedbreaker, loseBedbreaker, topKiller } = options;
 
-  const activeGames = getActiveGames();
-  const match = activeGames.get(gameId);
+  const activeGames = await getActiveGames();
+  const match = activeGames.find(g => g.gameId === gameId);
   if (!match) {
     console.warn(`[autoConfirmMatch] No active match found with ID ${gameId}`);
     return;
@@ -32,23 +32,30 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   const isAllRank = isAllRankQueue(match.voiceChannelId);
   const scoringChannel = await guild.channels.fetch(SCORING_CHANNEL_ID).catch(() => null);
   const allPlayerIds = [...teams[0], ...teams[1]];
-  const members = await Promise.all(allPlayerIds.map(id => guild.members.fetch(id).catch(() => null)));
+  
+  // Fetch members
+  const memberMap = new Map();
+  await Promise.all(allPlayerIds.map(async id => {
+    const member = await guild.members.fetch(id).catch(() => null);
+    if (member) memberMap.set(id, member);
+  }));
 
   // --- Determine winner from bedbreaker if needed ---
   let winnerTeam = winner;
   if (!winnerTeam && winBedbreaker) {
     const bedbreakerPlayer = await Promise.all(
-      members.map(async m => {
+      allPlayerIds.map(async id => {
+        const m = memberMap.get(id);
         if (!m) return null;
         const player = await Player.load(m);
         return player.username.toLowerCase() === winBedbreaker.toLowerCase()
-          ? { player, member: m }
+          ? { id, player }
           : null;
       })
     ).then(res => res.find(Boolean));
 
     if (bedbreakerPlayer) {
-      winnerTeam = teams[0].includes(bedbreakerPlayer.member.id) ? 'team1' : 'team2';
+      winnerTeam = teams[0].includes(bedbreakerPlayer.id) ? 'team1' : 'team2';
     } else {
       console.warn(`[AutoConfirm] WinBedbreaker ${winBedbreaker} not found in either team for ${gameId}`);
       winnerTeam = 'team1'; // fallback
@@ -64,12 +71,15 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   let winBedUsername = winBedbreaker;
   let loseBedUsername = loseBedbreaker;
 
-  for (const member of members.filter(Boolean)) {
+  for (const id of allPlayerIds) {
+    const member = memberMap.get(id);
+    if (!member) continue;
+
     try {
-      const player = new Player(member);
+      const player = await Player.load(member);
       const oldElo = player.elo;
 
-      const isWinner = winners.includes(member.id);
+      const isWinner = winners.includes(id);
       const uname = player.username.toLowerCase();
 
       const isTopKiller = uname === topKiller?.toLowerCase();
@@ -99,7 +109,7 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
         newElo: player.elo
       });
     } catch (err) {
-      console.error(`[autoConfirmMatch] Error processing ${member?.id || 'unknown'}: ${err.stack}`);
+      console.error(`[autoConfirmMatch] Error processing ${id}: ${err.stack}`);
     }
   }
 
