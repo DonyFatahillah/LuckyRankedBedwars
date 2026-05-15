@@ -5,10 +5,10 @@ const {
 } = require('discord.js');
 
 const { logStaffCommand } = require('../../utils/staffLogger');
-const { deleteActiveGame } = require('../../queue/queueManager');
+const { updateMatchStatus, getMatchLog, editLogEmbed } = require('../../utils/matchLogger');
+const { getActiveGames, deleteActiveGame } = require('../../queue/queueManager');
 const ActiveGame = require('../../models/ActiveGame');
 const Player = require('../../models/Player');
-const { updateMatchStatus, getMatchLog, editLogEmbed } = require('../../utils/matchLogger');
 const { publishMatchVoid } = require('../../utils/redisClient');
 require('dotenv').config();
 
@@ -16,9 +16,6 @@ const STAFF_CHANNEL_ID = process.env.STAFF_VERIFY_CHANNEL_ID;
 const MATCH_LOGS_ID = process.env.MATCH_LOGS_ID;
 const VERIFY_MATCH_CHANNEL_ID = process.env.VERIFY_MATCH_CHANNEL_ID;
 const SCORING_CHANNEL_ID = process.env.SCORING_CHANNEL_ID;
-
-const { getMatchLog } = require('../../utils/matchLogger');
-const { getActiveGames, deleteActiveGame } = require('../../queue/queueManager');
 
 module.exports = {
   data: new SlashCommandBuilder()
