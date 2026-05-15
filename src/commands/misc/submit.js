@@ -64,12 +64,12 @@ module.exports = {
       });
     }
 
-    const activeGames = getActiveGames();
+    const activeGames = await getActiveGames();
     const staffChannelId = process.env.STAFF_VERIFY_CHANNEL_ID;
-    const entries = Array.from(activeGames.entries()).reverse();
-    const matchLogs = getLogs();
+    const matchLogs = await getLogs();
 
-    for (const [gameId, matchData] of entries) {
+    for (const matchData of activeGames) {
+      const gameId = matchData.gameId;
       const isInCorrectChannel =
         matchData.textChannelId === channelId ||
         matchData.voiceChannelIds?.includes(channelId);
@@ -190,15 +190,13 @@ module.exports = {
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused(true);
     const channelId = interaction.channelId;
-    const activeGames = getActiveGames();
+    const activeGames = await getActiveGames();
 
-    let gameId = null;
     let match = null;
 
-    for (const [id, m] of activeGames.entries()) {
+    for (const m of activeGames) {
       const isInCorrectChannel = m.textChannelId === channelId || m.voiceChannelIds?.includes(channelId);
       if (isInCorrectChannel) {
-        gameId = id;
         match = m;
         break;
       }

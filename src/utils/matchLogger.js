@@ -176,14 +176,18 @@ async function editLogEmbed(client, guildId, gameId, channelId, status, options 
 async function getLogs() {
   try {
     const keys = await redis.keys('match:*');
+    if (keys.length === 0) return {};
+
+    const values = await redis.mget(keys);
     const logs = {};
-    for (const key of keys) {
-      const raw = await redis.get(key);
-      if (raw) {
+
+    keys.forEach((key, i) => {
+      if (values[i]) {
         const gameId = key.split(':')[1];
-        logs[gameId] = JSON.parse(raw);
+        logs[gameId] = JSON.parse(values[i]);
       }
-    }
+    });
+
     return logs;
   } catch (err) {
     console.error('[MatchLogger] Failed to get all logs from Redis:', err);

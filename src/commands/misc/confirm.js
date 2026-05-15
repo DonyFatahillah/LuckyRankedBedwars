@@ -81,8 +81,8 @@ module.exports = {
     activeConfirmLocks.add(gameId);
 
     try {
-      const activeGames = getActiveGames();
-      const match = activeGames.get(gameId);
+      const activeGames = await getActiveGames();
+      const match = activeGames.find(g => g.gameId === gameId);
       if (!match) {
         return interaction.editReply({ content: `❌ No active game found with ID #${gameId}` });
       }
@@ -91,7 +91,7 @@ module.exports = {
       const guild = interaction.guild;
       const textChannel = await guild.channels.fetch(match.textChannelId).catch(() => null);
       const scoringChannel = await guild.channels.fetch(SCORING_CHANNEL_ID).catch(() => null);
-      const logs = getLogs();
+      const logs = await getLogs();
 
       const winners = winningTeam === 'team1' ? match.teams[0] : match.teams[1];
       const losers = winningTeam === 'team1' ? match.teams[1] : match.teams[0];
@@ -241,11 +241,11 @@ module.exports = {
 
   autocomplete: async (interaction) => {
     const focused = interaction.options.getFocused(true);
-    const activeGames = getActiveGames();
+    const activeGames = await getActiveGames();
 
     if (focused.name === 'gameid') {
       return interaction.respond(
-        [...activeGames.keys()]
+        activeGames.map(g => g.gameId)
           .filter(id => id.toLowerCase().includes(focused.value.toLowerCase()))
           .slice(0, 25)
           .map(id => ({ name: `#${id}`, value: id }))
@@ -253,7 +253,7 @@ module.exports = {
     }
 
     const gameId = interaction.options.getString('gameid')?.toUpperCase();
-    const match = activeGames.get(gameId);
+    const match = activeGames.find(g => g.gameId === gameId);
     if (!match) return interaction.respond([]);
 
     const allPlayers = [...match.teams[0], ...match.teams[1]];

@@ -26,9 +26,9 @@ module.exports = {
 
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused();
-    const activeGames = getActiveGames();
+    const activeGames = await getActiveGames();
 
-    const choices = [...activeGames.keys()]
+    const choices = activeGames.map(g => g.gameId)
       .filter(gameId => gameId.toLowerCase().includes(focused.toLowerCase()))
       .slice(0, 25);
 
@@ -60,10 +60,9 @@ module.exports = {
 
     fs.writeFileSync(matchLogPath, JSON.stringify(matchLogs, null, 2));
 
-    const activeGames = getActiveGames();
-    if (activeGames.has(gameId)) {
-      const match = activeGames.get(gameId);
-
+    const activeGames = await getActiveGames();
+    const match = activeGames.find(g => g.gameId === gameId);
+    if (match) {
       const category = await interaction.guild.channels.fetch(match.categoryId).catch(() => null);
       if (category) {
         for (const channel of category.children.cache.values()) {

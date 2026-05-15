@@ -62,7 +62,7 @@ module.exports = {
     const winBedbreaker = interaction.options.getString('winbedbreaker');
     const loseBedbreaker = interaction.options.getString('losebedbreaker');
 
-    const logs = getLogs();
+    const logs = await getLogs();
     const logEntry = logs[gameId];
 
     if (!logEntry) {
@@ -163,7 +163,7 @@ module.exports = {
 
   autocomplete: async (interaction) => {
     const focused = interaction.options.getFocused(true);
-    const logs = getLogs();
+    const logs = await getLogs();
 
     if (focused.name === 'gameid') {
       return interaction.respond(

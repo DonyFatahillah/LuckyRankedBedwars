@@ -5,33 +5,17 @@ const {
 } = require('discord.js');
 
 const { logStaffCommand } = require('../../utils/staffLogger');
-const { updateMatchStatus, getMatchLog, editLogEmbed, getLogs } = require('../../utils/matchLogger');
-const { getActiveGames, deleteActiveGame } = require('../../queue/queueManager');
+const { updateMatchStatus, getMatchLog, editLogEmbed } = require('../../utils/matchLogger');
+const { deleteActiveGame } = require('../../queue/queueManager');
 const ActiveGame = require('../../models/ActiveGame');
 const Player = require('../../models/Player');
-const { publishMatchVoid } = require('../../utils/redisClient');
+const { publishMatchVoid, redis } = require('../../utils/redisClient');
 require('dotenv').config();
 
 const STAFF_CHANNEL_ID = process.env.STAFF_VERIFY_CHANNEL_ID;
 const MATCH_LOGS_ID = process.env.MATCH_LOGS_ID;
 const VERIFY_MATCH_CHANNEL_ID = process.env.VERIFY_MATCH_CHANNEL_ID;
 const SCORING_CHANNEL_ID = process.env.SCORING_CHANNEL_ID;
-
-let cachedChoices = [];
-
-async function refreshAutocompleteCache() {
-  const activeGames = await getActiveGames();
-  const logs = await getLogs();
-  
-  cachedChoices = [
-    ...activeGames.map(g => g.gameId),
-    ...Object.keys(logs)
-  ].map(id => ({ name: id, value: id }));
-}
-
-// Refresh periodically every 5 minutes
-setInterval(refreshAutocompleteCache, 300000);
-refreshAutocompleteCache();
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -53,11 +37,22 @@ module.exports = {
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused().toLowerCase();
     
-    const filtered = cachedChoices
-      .filter(choice => choice.name.toLowerCase().includes(focused))
-      .slice(0, 25);
-
     try {
+      const [gameKeys, matchKeys] = await Promise.all([
+        redis.keys('game:*'),
+        redis.keys('match:*')
+      ]);
+
+      const gameIds = new Set([
+        ...gameKeys.map(k => k.split(':')[1]),
+        ...matchKeys.map(k => k.split(':')[1])
+      ]);
+
+      const filtered = Array.from(gameIds)
+        .filter(id => id.toLowerCase().includes(focused))
+        .slice(0, 25)
+        .map(id => ({ name: id, value: id }));
+
       await interaction.respond(filtered);
     } catch (err) {
       console.error(`[Void Autocomplete] Response error:`, err);

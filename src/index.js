@@ -161,6 +161,19 @@
   await client.login(process.env.DISCORD_TOKEN);
 
 client.on('interactionCreate', async (interaction) => {
+  // Handle Autocomplete
+  if (interaction.isAutocomplete()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command || !command.autocomplete) return;
+
+    try {
+      await command.autocomplete(interaction);
+    } catch (err) {
+      console.error(`[Autocomplete Error] /${interaction.commandName}:`, err);
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
