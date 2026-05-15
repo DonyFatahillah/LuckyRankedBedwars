@@ -59,13 +59,13 @@ async function publishMatch(matchData) {
 }
 
 async function publishMatchVoid(matchData) {
-  const voidchannel = process.env.REDIS_CHANNEL || 'minecraft.matches.void';
+  const voidchannel = process.env.REDIS_VOID_CHANNEL || 'minecraft.matches.void';
   try {
     const payload = JSON.stringify(matchData);
     await redis.publish(voidchannel, payload);
     console.log(`[Redis] Match #${matchData.matchId} published to ${voidchannel}`);
   } catch (err) {
-    console.error('[Redis] Failed to publish match:', err);
+    console.error('[Redis] Failed to publish match void:', err);
   }
 }
 

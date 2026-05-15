@@ -35,26 +35,27 @@ module.exports = {
     ),
 
   async autocomplete(interaction) {
-    const focused = interaction.options.getFocused();
-    
-    // Get active games (stored in Redis via queueManager)
-    const activeGames = await getActiveGames();
-    console.log(`[Void Autocomplete] Active games found: ${activeGames.length}`);
-    
-    // Get all matches (logs) from MongoDB via matchLogger
-    const { getLogs } = require('../../utils/matchLogger');
-    const logs = await getLogs();
-    console.log(`[Void Autocomplete] Logs found: ${Object.keys(logs).length}`);
+    try {
+      const focused = interaction.options.getFocused();
+      
+      const activeGames = await getActiveGames();
+      const { getLogs } = require('../../utils/matchLogger');
+      const logs = await getLogs();
 
-    const choices = [
-      ...activeGames.map(g => g.gameId),
-      ...Object.keys(logs)
-    ]
-      .filter(id => id && id.toLowerCase().includes(focused.toLowerCase()))
-      .slice(0, 25);
+      const choices = [
+        ...activeGames.map(g => g.gameId),
+        ...Object.keys(logs)
+      ]
+        .filter(id => id && id.toLowerCase().includes(focused.toLowerCase()))
+        .slice(0, 25);
 
-    console.log(`[Void Autocomplete] Suggestions: ${JSON.stringify(choices)}`);
-    await interaction.respond(choices.map(id => ({ name: id, value: id })));
+      await interaction.respond(choices.map(id => ({ name: id, value: id })));
+    } catch (err) {
+      console.error(`[Void Autocomplete] Error:`, err);
+      try {
+        await interaction.respond([]);
+      } catch {}
+    }
   },
 
   async execute(interaction) {
