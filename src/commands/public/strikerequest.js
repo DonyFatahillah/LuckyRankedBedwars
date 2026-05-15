@@ -9,19 +9,10 @@ const {
 const path = require('path');
 const fs = require('fs');
 const Player = require('../../models/Player');
+const { getMatchLog } = require('../../utils/matchLogger');
 require('dotenv').config();
 
-const matchLogPath = path.join(__dirname, '../../../data/matchLogs.json');
 const strikePath = path.join(__dirname, '../../../data/strikes.json');
-
-// Helper: load match logs
-function loadMatchLogs() {
-  try {
-    return JSON.parse(fs.readFileSync(matchLogPath, 'utf-8'));
-  } catch {
-    return {};
-  }
-}
 
 // Helper: load strikes
 function loadStrikes() {
@@ -67,7 +58,7 @@ module.exports = {
     const focused = interaction.options.getFocused(true);
     if (focused.name !== 'gameid') return;
 
-    // Extract user ID from raw options if available
+    // Extract user ID from raw options
     const subOptions = interaction.options.data.find(opt => opt.name === 'request')?.options || [];
     const playerOption = subOptions.find(opt => opt.name === 'player');
     const playerId = playerOption?.value;
@@ -81,17 +72,19 @@ module.exports = {
       return interaction.respond([{ name: '❌ Could not find that player.', value: 'N/A' }]);
     }
 
-    const player = new Player(member);
+    const player = await Player.load(member);
     const recent = player.recentlyPlayed || [];
-    const matchLogs = loadMatchLogs();
 
-    const suggestions = recent
-      .filter(id => matchLogs[id] && ['pending', 'confirmed'].includes(matchLogs[id].status))
-      .map(id => ({ name: `#${id}`, value: id }))
-      .filter(s => s.name.toLowerCase().includes(focused.value.toLowerCase()))
-      .slice(0, 25);
-
-    await interaction.respond(suggestions);
+    const suggestions = [];
+    for (const id of recent) {
+      const match = await getMatchLog(id);
+      if (match && ['pending', 'confirmed'].includes(match.status)) {
+        if (id.toLowerCase().includes(focused.value.toLowerCase())) {
+          suggestions.push({ name: `#${id}`, value: id });
+        }
+      }
+    }
+    await interaction.respond(suggestions.slice(0, 25));
   },
 
   async execute(interaction) {
@@ -111,11 +104,10 @@ module.exports = {
       });
     }
 
-    const targetPlayer = new Player(member);
+    const targetPlayer = await Player.load(member);
     const username = targetPlayer.username;
 
-    const matchLogs = loadMatchLogs();
-    const match = matchLogs[gameId];
+    const match = await getMatchLog(gameId);
 
     if (!match) {
       return await interaction.reply({

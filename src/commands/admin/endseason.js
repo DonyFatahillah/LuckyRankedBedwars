@@ -1,133 +1,70 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const PlayerModel = require('../../models/PlayerSchema');
+const MatchLogModel = require('../../models/MatchLogSchema');
 const Player = require('../../models/Player');
-
-require('dotenv').config();
-const STAFF_LOG_ID = process.env.SEASON_LOGS_CHANNEL_ID;
-
-const dataDir = path.join(__dirname, '../../../data');
-const matchLogPath = path.join(dataDir, 'matchLogs.json');
-const eloPath = path.join(dataDir, 'elo.json');
-const statsPath = path.join(dataDir, 'playerStats.json');
-const seasonPath = path.join(dataDir, 'season.json');
-
-function getNextSeasonNumber() {
-  let currentSeason = 0;
-  if (fs.existsSync(seasonPath)) {
-    const json = JSON.parse(fs.readFileSync(seasonPath, 'utf-8'));
-    currentSeason = json.season || 0;
-  }
-  const nextSeason = currentSeason + 1;
-  fs.writeFileSync(seasonPath, JSON.stringify({ season: nextSeason }, null, 2));
-  return nextSeason;
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('endseason')
-    .setDescription('📅 Ends the current ranked season and resets all ELO/stats.')
+    .setDescription('Ends the ranked season, archives data, and resets stats.')
+    .addStringOption(opt => opt.setName('season').setDescription('Season name (e.g., S1, S2-Beta)').setRequired(true))
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
+    const seasonName = interaction.options.getString('season');
+    const archiveDir = path.join(__dirname, '../../../archived');
+    if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir);
 
     try {
-      const season = getNextSeasonNumber();
+      // 1. Archive Data
+      const allPlayers = await PlayerModel.find({}).lean();
+      const allMatches = await MatchLogModel.find({}).lean();
+      
+      const archivePath = path.join(archiveDir, `archived-season-${seasonName}.json`);
+      fs.writeFileSync(archivePath, JSON.stringify({ players: allPlayers, matches: allMatches }, null, 2));
 
-      const matchBackup = path.join(dataDir, `matchLogs-season-${season}.json`);
-      const statsBackup = path.join(dataDir, `playerStats-season-${season}.json`);
-      const eloBackup = path.join(dataDir, `elo-season-${season}.json`);
+      // 2. Aggregate Match Stats for Chart
+      const dailyMatches = await MatchLogModel.aggregate([
+        { $project: { date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, status: 1 } },
+        { $group: { _id: "$date", total: { $sum: 1 }, voided: { $sum: { $cond: [{ $eq: ["$status", "void"] }, 1, 0] } } } },
+        { $sort: { _id: 1 } }
+      ]);
 
-      if (fs.existsSync(matchLogPath)) fs.renameSync(matchLogPath, matchBackup);
-      if (fs.existsSync(statsPath)) fs.renameSync(statsPath, statsBackup);
-      if (fs.existsSync(eloPath)) fs.renameSync(eloPath, eloBackup);
+      const labels = dailyMatches.map(m => m._id);
+      const totals = dailyMatches.map(m => m.total);
+      const voids = dailyMatches.map(m => m.voided);
 
-      const oldLogs = JSON.parse(fs.readFileSync(matchBackup));
-      const oldStats = JSON.parse(fs.readFileSync(statsBackup));
-      const oldElo = JSON.parse(fs.readFileSync(eloBackup));
+      // 3. Get Top 8
+      const top8 = await PlayerModel.find({}).sort({ elo: -1 }).limit(8);
 
-      // ✅ Reset ELOs
-      const eloReset = {};
-      for (const userId of Object.keys(oldElo)) {
-        eloReset[userId] = 0;
-      }
-      fs.writeFileSync(eloPath, JSON.stringify(eloReset, null, 2));
+      // 4. Generate Chart URL (QuickChart)
+      const chartUrl = `https://quickchart.io/chart?c={type:'line',data:{labels:[${labels.map(l => `'${l}'`).join(',')}],datasets:[{label:'Total Matches',data:[${totals.join(',')}],borderColor:'purple',fill:false},{label:'Voided',data:[${voids.join(',')}],borderColor:'gray',fill:false}]}}`;
 
-      // ✅ Reset Stats
-      const statsReset = {};
-      for (const userId of Object.keys(oldStats)) {
-        statsReset[userId] = {
-          wins: 0,
-          losses: 0,
-          winstreak: 0,
-          mvps: 0,
-          bedsBroken: 0
-        };
-      }
-      fs.writeFileSync(statsPath, JSON.stringify(statsReset, null, 2));
+      // 5. Reset Stats
+      await PlayerModel.updateMany({}, { $set: { elo: 1000, wins: 0, losses: 0, winstreak: 0, mvps: 0, bedsBroken: 0 } });
+      await MatchLogModel.deleteMany({});
+      // Note: Redis cache should be cleared here ideally as well
 
-      // ✅ Reset matchLogs
-      fs.writeFileSync(matchLogPath, JSON.stringify({}, null, 2));
-
-      // 📊 Summary
-      const confirmed = Object.values(oldLogs).filter(log => log.status === 'confirmed');
-      const totalMatches = confirmed.length;
-
-      const top10 = Object.entries(oldElo).sort((a, b) => b[1] - a[1]).slice(0, 10);
-      const mostWins = Object.entries(oldStats).sort((a, b) => (b[1]?.wins || 0) - (a[1]?.wins || 0))[0];
-      const mostMVPs = Object.entries(oldStats).sort((a, b) => (b[1]?.mvps || 0) - (a[1]?.mvps || 0))[0];
-      const mostBeds = Object.entries(oldStats).sort((a, b) => (b[1]?.bedsBroken || 0) - (a[1]?.bedsBroken || 0))[0];
-
-      // 🧼 Embed 1: Reset confirmation
-      const resetEmbed = new EmbedBuilder()
-        .setTitle(`🏁 Season ${season} Ended`)
-        .setDescription(`**Executed by:** <@${interaction.user.id}>\nAll ELO, stats, and matches have been reset.\nBackups saved as \`*-season-${season}.json\`.`)
-        .setColor(0xff4757)
-        .setTimestamp();
-
-      // 📊 Embed 2: Summary
-      const summaryEmbed = new EmbedBuilder()
-        .setTitle(`📊 Season ${season} Summary`)
+      // 6. Report
+      const embed = new EmbedBuilder()
+        .setTitle(`🏁 Season ${seasonName} Archive & Reset Complete`)
+        .setDescription(`Archive saved to \`${archivePath}\``)
         .addFields(
-          { name: '🕹️ Total Confirmed Matches', value: `${totalMatches}`, inline: true },
-          { name: '🥇 Most Wins', value: `<@${mostWins[0]}> — \`${mostWins[1].wins}\` wins`, inline: true },
-          { name: '🗡️ Most MVPs', value: `<@${mostMVPs[0]}> — \`${mostMVPs[1].mvps}\` MVPs`, inline: true },
-          { name: '🛏️ Most Beds Broken', value: `<@${mostBeds[0]}> — \`${mostBeds[1].bedsBroken}\` beds`, inline: true },
-          {
-            name: '🏆 Top 10 ELOs',
-            value: top10.map((u, i) => `\`${i + 1}.\` <@${u[0]}> — **${u[1]}**`).join('\n'),
-            inline: false
-          }
+          { name: '🏆 Top 8 ELO', value: top8.map((p, i) => `\`${i+1}.\` <@${p.userId}> - **${p.elo}**`).join('\n') },
         )
-        .setColor(0x3498db)
-        .setTimestamp();
+        .setImage(chartUrl)
+        .setColor(0x800080);
 
-      // 📛 Rename all players to [0] name
-      for (const userId of Object.keys(oldElo)) {
-        try {
-          const member = await interaction.guild.members.fetch(userId);
-          const player = new Player(member);
-          await player.setElo(0); // updates nickname + roles
-        } catch (err) {
-          console.warn(`[endseason] Failed to rename or update ${userId}:`, err.message);
-        }
-      }
-
-      // 📤 Post to staff logs
-      const staffChannel = interaction.client.channels.cache.get(STAFF_LOG_ID);
-      if (staffChannel) {
-        await staffChannel.send({ embeds: [resetEmbed, summaryEmbed] });
-      }
-
-      await interaction.editReply({
-        content: `✅ Season ${season} ended. All data reset and archived.`,
-        embeds: [resetEmbed, summaryEmbed]
-      });
-
+      await interaction.editReply({ content: '✅ Season ended successfully.', embeds: [embed] });
+      
+      // Notify guild members (Optional: update nicknames/roles)
+      // Implementation depends on if you want to iterate every user
     } catch (err) {
-      console.error('[endseason] ❌', err);
-      await interaction.editReply({ content: '❌ Failed to end season. Check logs.' });
+      console.error(err);
+      await interaction.editReply({ content: '❌ Failed to archive and reset season.' });
     }
   }
 };

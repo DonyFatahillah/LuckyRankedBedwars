@@ -17,6 +17,9 @@ const MATCH_LOGS_ID = process.env.MATCH_LOGS_ID;
 const VERIFY_MATCH_CHANNEL_ID = process.env.VERIFY_MATCH_CHANNEL_ID;
 const SCORING_CHANNEL_ID = process.env.SCORING_CHANNEL_ID;
 
+const { getMatchLog } = require('../../utils/matchLogger');
+const { getActiveGames, deleteActiveGame } = require('../../queue/queueManager');
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('void')
@@ -26,12 +29,31 @@ module.exports = {
       option.setName('gameid')
         .setDescription('The Game ID to void')
         .setRequired(true)
+        .setAutocomplete(true)
     )
     .addStringOption(option =>
       option.setName('reason')
         .setDescription('Optional reason for void')
         .setRequired(false)
     ),
+
+  async autocomplete(interaction) {
+    const focused = interaction.options.getFocused();
+    const activeGames = await getActiveGames();
+    
+    // getLogs() returns an object where keys are gameIds
+    const { getLogs } = require('../../utils/matchLogger');
+    const logs = await getLogs();
+
+    const choices = [
+      ...activeGames.map(g => g.gameId),
+      ...Object.keys(logs)
+    ]
+      .filter(id => id.toLowerCase().includes(focused.toLowerCase()))
+      .slice(0, 25);
+
+    await interaction.respond(choices.map(id => ({ name: id, value: id })));
+  },
 
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
@@ -111,9 +133,13 @@ module.exports = {
     await editLogEmbed(interaction.client, guild.id, gameId, MATCH_LOGS_ID, 'void', { reason });
     await editLogEmbed(interaction.client, guild.id, gameId, VERIFY_MATCH_CHANNEL_ID, 'void', { reason });
 
-    await interaction.editReply({
-      content: `✅ Match ${gameId} has been voided.${removedFromActive ? '' : ' (ELO reverted)'}`,
-      ephemeral: true
-    });
+    try {
+      await interaction.editReply({
+        content: `✅ Match ${gameId} has been voided.${removedFromActive ? '' : ' (ELO reverted)'}`,
+        ephemeral: true
+      });
+    } catch (err) {
+      console.warn(`[void] Failed to send final reply: ${err.message}`);
+    }
   }
 };

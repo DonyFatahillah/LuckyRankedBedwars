@@ -1,43 +1,32 @@
-const fs = require('fs');
-const path = require('path');
+const TicketBanModel = require('../models/TicketBanSchema');
 
-const TICKET_BANS_PATH = path.join(__dirname, '../../data/ticketBans.json');
-
-let bans = {};
-if (fs.existsSync(TICKET_BANS_PATH)) {
-  try { bans = JSON.parse(fs.readFileSync(TICKET_BANS_PATH, 'utf8')); } 
-  catch (e) { console.error('[TicketBanManager] Failed to load:', e); }
+async function banUser(userId, duration = 0, reason = 'No reason') {
+  const expiresAt = duration > 0 ? new Date(Date.now() + duration * 1000) : null;
+  await TicketBanModel.findOneAndUpdate(
+    { userId },
+    { userId, expiresAt, reason },
+    { upsert: true }
+  );
 }
 
-function saveBans() {
-  fs.writeFileSync(TICKET_BANS_PATH, JSON.stringify(bans, null, 2));
+async function unbanUser(userId) {
+  await TicketBanModel.deleteOne({ userId });
 }
 
-function banUser(userId, duration = 0, reason = 'No reason') {
-  const expiresAt = duration > 0 ? Date.now() + duration * 1000 : 0;
-  bans[userId] = { expiresAt, reason };
-  saveBans();
-}
-
-function unbanUser(userId) {
-  delete bans[userId];
-  saveBans();
-}
-
-function isBanned(userId) {
-  const ban = bans[userId];
+async function isBanned(userId) {
+  const ban = await TicketBanModel.findOne({ userId });
   if (!ban) return false;
-  if (ban.expiresAt && Date.now() > ban.expiresAt) {
-    // Temporary ban expired
-    delete bans[userId];
-    saveBans();
+
+  // Check if temporary ban expired
+  if (ban.expiresAt && new Date() > ban.expiresAt) {
+    await ban.deleteOne();
     return false;
   }
   return true;
 }
 
-function getBanInfo(userId) {
-  return bans[userId] || null;
+async function getBanInfo(userId) {
+  return await TicketBanModel.findOne({ userId });
 }
 
 module.exports = { banUser, unbanUser, isBanned, getBanInfo };
