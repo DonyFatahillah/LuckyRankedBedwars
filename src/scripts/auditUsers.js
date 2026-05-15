@@ -36,6 +36,7 @@ async function auditUsers() {
   });
 
   try {
+    if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is not set in .env');
     await mongoose.connect(process.env.MONGODB_URI, { dbName: 'RankedBedwars' });
     console.log('🚀 Connected to MongoDB');
 
@@ -88,4 +89,4 @@ async function auditUsers() {
   }
 }
 
-auditUsers();
+module.exports = auditUsers;
