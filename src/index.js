@@ -14,6 +14,7 @@
   const runCleanup = require('./scripts/cleanupPlayers');  
   const syncRanks = require('./scripts/syncRanks');
   const syncVerifiedUsers = require('./scripts/syncVerifiedUsers');
+  const auditUsers = require('./scripts/auditUsers');
   const {cleanInvalidMessages} = require('./events/messageCreatePacks')
   const connectDB = require('./config/database');
   const { setupResultListener } = require('./utils/redisClient');
@@ -22,8 +23,9 @@
 
   try {
     await connectDB();
-    // Run syncVerifiedUsers on startup in the background
+    // Run maintenance tasks in background
     syncVerifiedUsers().catch(console.error);
+    auditUsers().catch(console.error);
 
     ({ loadLogs } = require('./utils/matchLogger'));
     cleanMatchLogs = require('./scripts/cleanupMatchLogs');
