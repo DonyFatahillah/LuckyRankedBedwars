@@ -307,13 +307,15 @@ async function handleCategoryCleanup(leftChannel) {
 
   console.log(`[Cleanup Debug] Checking cleanup for category: ${category.name} (${categoryId})`);
 
-  const matchEntry = [...getActiveGames().entries()].find(([, data]) => data.categoryId === categoryId);
-  if (!matchEntry) {
+  const activeGames = await getActiveGames();
+  const matchData = activeGames.find(data => data.categoryId === categoryId);
+  
+  if (!matchData) {
     console.log(`[Cleanup Debug] No active match found for category ${categoryId}`);
     return;
   }
 
-  const [gameId, matchData] = matchEntry;
+  const gameId = matchData.gameId;
   if (matchData.status === 'pending') {
     console.log(`[Cleanup] Game #${gameId} is pending. Skipping cleanup.`);
     return;
