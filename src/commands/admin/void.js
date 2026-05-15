@@ -5,7 +5,7 @@ const {
 } = require('discord.js');
 
 const { logStaffCommand } = require('../../utils/staffLogger');
-const { updateMatchStatus, getMatchLog, editLogEmbed } = require('../../utils/matchLogger');
+const { updateMatchStatus, getMatchLog, editLogEmbed, getLogs } = require('../../utils/matchLogger');
 const { getActiveGames, deleteActiveGame } = require('../../queue/queueManager');
 const ActiveGame = require('../../models/ActiveGame');
 const Player = require('../../models/Player');
@@ -17,29 +17,9 @@ const MATCH_LOGS_ID = process.env.MATCH_LOGS_ID;
 const VERIFY_MATCH_CHANNEL_ID = process.env.VERIFY_MATCH_CHANNEL_ID;
 const SCORING_CHANNEL_ID = process.env.SCORING_CHANNEL_ID;
 
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('void')
-    .setDescription('Void a match. Deletes it from active games or reverts ELO if confirmed.')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption(option =>
-      option.setName('gameid')
-        .setDescription('The Game ID to void')
-        .setRequired(true)
-        .setAutocomplete(true)
-    )
-    .addStringOption(option =>
-      option.setName('reason')
-        .setDescription('Optional reason for void')
-        .setRequired(false)
-    ),
-
 let cachedChoices = [];
 
 async function refreshAutocompleteCache() {
-  const { getLogs } = require('../../utils/matchLogger');
-  const { getActiveGames } = require('../../queue/queueManager');
-  
   const activeGames = await getActiveGames();
   const logs = await getLogs();
   
