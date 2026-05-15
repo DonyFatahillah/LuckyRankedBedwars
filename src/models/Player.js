@@ -13,7 +13,7 @@ class Player {
     this.id = member.id;
     this.discordUsername = member.user.username;
     this.displayName = member.displayName;
-    this.elo = data.elo ?? 0;
+    this.elo = isNaN(parseInt(data.elo)) ? 0 : parseInt(data.elo);
 
     // Load from provided data
     this.discordUsername = data.discordUsername || member.user.username;
