@@ -64,14 +64,14 @@ module.exports = {
       });
     }
 
-    const player = new Player(targetMember);
+    const player = await Player.load(targetMember);
 
     try {
       // Set the displayUsername which will update the full nickname automatically via save()
       await player.setDisplayUsername(newnick);
 
       return interaction.editReply({
-        content: `✅ Display name updated for <@${targetMember.id}> to \`${targetMember.displayName}\`.`,
+        content: `✅ Display name updated for <@${targetMember.id}> to \`${newnick}\`.`,
         ephemeral: true
       });
     } catch (err) {
