@@ -34,27 +34,53 @@ module.exports = {
         .setRequired(false)
     ),
 
+let cachedChoices = [];
+
+async function refreshAutocompleteCache() {
+  const { getLogs } = require('../../utils/matchLogger');
+  const { getActiveGames } = require('../../queue/queueManager');
+  
+  const activeGames = await getActiveGames();
+  const logs = await getLogs();
+  
+  cachedChoices = [
+    ...activeGames.map(g => g.gameId),
+    ...Object.keys(logs)
+  ].map(id => ({ name: id, value: id }));
+}
+
+// Refresh periodically every 5 minutes
+setInterval(refreshAutocompleteCache, 300000);
+refreshAutocompleteCache();
+
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('void')
+    .setDescription('Void a match. Deletes it from active games or reverts ELO if confirmed.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption(option =>
+      option.setName('gameid')
+        .setDescription('The Game ID to void')
+        .setRequired(true)
+        .setAutocomplete(true)
+    )
+    .addStringOption(option =>
+      option.setName('reason')
+        .setDescription('Optional reason for void')
+        .setRequired(false)
+    ),
+
   async autocomplete(interaction) {
+    const focused = interaction.options.getFocused().toLowerCase();
+    
+    const filtered = cachedChoices
+      .filter(choice => choice.name.toLowerCase().includes(focused))
+      .slice(0, 25);
+
     try {
-      const focused = interaction.options.getFocused();
-      
-      const activeGames = await getActiveGames();
-      const { getLogs } = require('../../utils/matchLogger');
-      const logs = await getLogs();
-
-      const choices = [
-        ...activeGames.map(g => g.gameId),
-        ...Object.keys(logs)
-      ]
-        .filter(id => id && id.toLowerCase().includes(focused.toLowerCase()))
-        .slice(0, 25);
-
-      await interaction.respond(choices.map(id => ({ name: id, value: id })));
+      await interaction.respond(filtered);
     } catch (err) {
-      console.error(`[Void Autocomplete] Error:`, err);
-      try {
-        await interaction.respond([]);
-      } catch {}
+      console.error(`[Void Autocomplete] Response error:`, err);
     }
   },
 
