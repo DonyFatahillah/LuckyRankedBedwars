@@ -173,4 +173,4 @@ async function editLogEmbed(client, guildId, gameId, channelId, status, options 
   await message.edit({ embeds: [embed] });
 }
 
-module.exports = { loadLogs, saveLogs, getMatchLog, logMatch, updateMatchStatus, updateMatchDetails, sendLogToStaffChannel, editLogEmbed };',
+module.exports = { loadLogs, saveLogs, getMatchLog, logMatch, updateMatchStatus, updateMatchDetails, sendLogToStaffChannel, editLogEmbed };
