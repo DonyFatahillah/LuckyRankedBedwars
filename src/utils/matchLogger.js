@@ -1,76 +1,54 @@
-const fs = require('fs');
-const path = require('path');
 const { EmbedBuilder } = require('discord.js');
+const { redis } = require('./redisClient');
 const MatchLogModel = require('../models/MatchLogSchema');
 
-const MATCH_LOGS_PATH = path.join(__dirname, '../../data/matchLogs.json');
-
-// ✅ Singleton logs object (in-memory cache)
-let logs = {};
-
-// ✅ Load into memory (from JSON, then fallback to Mongo if needed)
+// ✅ Load logs from MongoDB and cache in Redis
 async function loadLogs() {
-  if (fs.existsSync(MATCH_LOGS_PATH)) {
-    try {
-      const raw = fs.readFileSync(MATCH_LOGS_PATH);
-      const data = JSON.parse(raw);
-
-      logs = Array.isArray(data)
-        ? Object.fromEntries(data
-            .filter(e => e && e.gameId)
-            .map(e => [e.gameId, {
-              ...e,
-              messageIds: {}, // fallback for older data
-            }])
-          )
-        : data;
-    } catch (err) {
-      console.error('[MatchLogger] Failed to parse JSON, starting with empty logs.');
-      logs = {};
+  try {
+    const logsFromDb = await MatchLogModel.find({}).lean();
+    for (const log of logsFromDb) {
+      await redis.set(`match:${log.matchId}`, JSON.stringify(log));
     }
+    console.log(`[MatchLogger] Loaded ${logsFromDb.length} logs from MongoDB to Redis.`);
+  } catch (err) {
+    console.error('[MatchLogger] Failed to load from Mongo:', err);
   }
-
-  // If memory is empty but we have a DB, we could sync here, 
-  // but usually we rely on the JSON for quick startup.
-  console.log(`[MatchLogger] Loaded ${Object.keys(logs).length} logs.`);
 }
 
-// ✅ Save logs to disk + Mongo
+// ✅ Save log to Redis + MongoDB
 async function saveLogs(gameId) {
-  fs.writeFileSync(MATCH_LOGS_PATH, JSON.stringify(logs, null, 2));
+  const raw = await redis.get(`match:${gameId}`);
+  if (!raw) return;
+  const log = JSON.parse(raw);
 
-  if (gameId && logs[gameId]) {
-    const log = logs[gameId];
-    try {
-      await MatchLogModel.findOneAndUpdate(
-        { matchId: gameId },
-        {
-          matchId: gameId,
-          timestamp: new Date(log.createdAt).getTime(),
-          queueType: log.queueType || 'Unknown',
-          winners: log.winner === 'team1' ? log.team1 : (log.winner === 'team2' ? log.team2 : []),
-          losers: log.winner === 'team1' ? log.team2 : (log.winner === 'team2' ? log.team1 : []),
-          mvp: log.topKiller || null,
-          bedbreaker: log.bedbreaker || null,
-          status: log.status || 'pending',
-          mapName: log.mapName || 'Unknown'
-        },
-        { upsert: true }
-      );
-    } catch (err) {
-      console.error(`[MatchLogger-Mongo] Failed to save match #${gameId}:`, err);
-    }
+  try {
+    await MatchLogModel.findOneAndUpdate(
+      { matchId: gameId },
+      {
+        matchId: gameId,
+        timestamp: new Date(log.createdAt).getTime(),
+        queueType: log.queueType || 'Unknown',
+        winners: log.winners || [],
+        losers: log.losers || [],
+        mvp: log.topKiller || null,
+        bedbreaker: log.bedbreaker || null,
+        status: log.status || 'pending',
+        mapName: log.mapName || 'Unknown'
+      },
+      { upsert: true }
+    );
+  } catch (err) {
+    console.error(`[MatchLogger-Mongo] Failed to save match #${gameId}:`, err);
   }
 }
 
-// ✅ Get current logs
-function getLogs() {
-  return logs;
+async function getMatchLog(gameId) {
+  const raw = await redis.get(`match:${gameId}`);
+  return raw ? JSON.parse(raw) : null;
 }
 
-// ✅ Create a new match log
 async function logMatch(gameId, team1, team2, options = {}) {
-  logs[gameId] = {
+  const log = {
     gameId,
     team1,
     team2,
@@ -78,38 +56,38 @@ async function logMatch(gameId, team1, team2, options = {}) {
     mapName: options.mapName || 'Unknown',
     status: 'pending',
     createdAt: new Date().toISOString(),
-    messageIds: {}, 
+    messageIds: {},
   };
+  await redis.set(`match:${gameId}`, JSON.stringify(log));
   await saveLogs(gameId);
 }
 
-// ✅ Update status + winner
 async function updateMatchStatus(gameId, status, winner = null) {
-  if (!logs[gameId]) {
-    console.warn(`[updateMatchStatus] No match log found for ID ${gameId}`);
-    return;
-  }
+  const log = await getMatchLog(gameId);
+  if (!log) return;
 
-  logs[gameId].status = status;
-  logs[gameId].winner = winner;
+  log.status = status;
+  log.winner = winner;
+  log.winners = winner === 'team1' ? log.team1 : (winner === 'team2' ? log.team2 : []);
+  log.losers = winner === 'team1' ? log.team2 : (winner === 'team2' ? log.team1 : []);
+  
+  await redis.set(`match:${gameId}`, JSON.stringify(log));
   await saveLogs(gameId);
 }
 
-// ✅ Update MVP, kills, etc.
 async function updateMatchDetails(gameId, details = {}) {
-  if (!logs[gameId]) {
-    console.warn(`[updateMatchDetails] No match log found for ID ${gameId}`);
-    return;
-  }
+  const log = await getMatchLog(gameId);
+  if (!log) return;
 
-  Object.assign(logs[gameId], details);
+  Object.assign(log, details);
+  await redis.set(`match:${gameId}`, JSON.stringify(log));
   await saveLogs(gameId);
 }
 
 // ✅ Send log embed
 async function sendLogToStaffChannel(client, guildId, gameId, channelIds, bedbreaker = null) {
   const guild = await client.guilds.fetch(guildId);
-  const log = logs[gameId];
+  const log = await getMatchLog(gameId);
   if (!log) return;
 
   const team1 = log.team1.map(id => `<@${id}>`).join(', ') || 'N/A';
@@ -134,26 +112,17 @@ async function sendLogToStaffChannel(client, guildId, gameId, channelIds, bedbre
     .setColor(status === 'confirmed' ? 0x00ff00 : status === 'void' ? 0xff0000 : 0xffa500)
     .setTimestamp();
 
-  if (bedbreaker) {
-    embed.addFields({ name: '🔨 Bedbreaker', value: bedbreaker, inline: false });
-  }
-
+  if (bedbreaker) embed.addFields({ name: '🔨 Bedbreaker', value: bedbreaker, inline: false });
   if (log.topKiller && log.kills !== undefined) {
-    embed.addFields({
-      name: '⚔️ Top Killer',
-      value: `${log.topKiller} (${log.kills} kills)`,
-      inline: false
-    });
+    embed.addFields({ name: '⚔️ Top Killer', value: `${log.topKiller} (${log.kills} kills)`, inline: false });
   }
 
   const channels = Array.isArray(channelIds) ? channelIds : [channelIds];
-  if (!log.messageIds) log.messageIds = {};
-
   for (const channelId of channels) {
     const channel = await guild.channels.fetch(channelId).catch(() => null);
     if (!channel) continue;
 
-    const oldMsgId = log.messageIds[channelId];
+    const oldMsgId = log.messageIds?.[channelId];
     if (oldMsgId) {
       const oldMsg = await channel.messages.fetch(oldMsgId).catch(() => null);
       if (oldMsg) {
@@ -164,16 +133,18 @@ async function sendLogToStaffChannel(client, guildId, gameId, channelIds, bedbre
 
     const sent = await channel.send({ embeds: [embed] }).catch(() => null);
     if (status === 'pending' && sent) {
+      if (!log.messageIds) log.messageIds = {};
       log.messageIds[channelId] = sent.id;
     }
   }
 
+  await redis.set(`match:${gameId}`, JSON.stringify(log));
   await saveLogs(gameId);
 }
 
 async function editLogEmbed(client, guildId, gameId, channelId, status, options = {}) {
-  const log = logs[gameId];
-  if (!log || !log.messageIds || !log.messageIds[channelId]) return;
+  const log = await getMatchLog(gameId);
+  if (!log || !log.messageIds?.[channelId]) return;
 
   const guild = await client.guilds.fetch(guildId);
   const channel = await guild.channels.fetch(channelId).catch(() => null);
@@ -182,59 +153,24 @@ async function editLogEmbed(client, guildId, gameId, channelId, status, options 
   const message = await channel.messages.fetch(log.messageIds[channelId]).catch(() => null);
   if (!message) return;
 
-  const team1 = log.team1.map(id => `<@${id}>`).join(', ') || 'N/A';
-  const team2 = log.team2.map(id => `<@${id}>`).join(', ') || 'N/A';
-
   const embed = new EmbedBuilder()
-    .setTitle(
-      status === 'confirmed'
-        ? `✅ Match #${gameId} Confirmed`
-        : status === 'void'
-        ? `❌ Match #${gameId} Voided`
-        : `📘 Match Log — #${gameId}`
-    )
+    .setTitle(status === 'confirmed' ? `✅ Match #${gameId} Confirmed` : status === 'void' ? `❌ Match #${gameId} Voided` : `📘 Match Log — #${gameId}`)
     .addFields(
-      { name: 'Team 1', value: team1, inline: false },
-      { name: 'Team 2', value: team2, inline: false }
+      { name: 'Team 1', value: log.team1.map(id => `<@${id}>`).join(', '), inline: false },
+      { name: 'Team 2', value: log.team2.map(id => `<@${id}>`).join(', '), inline: false }
     )
     .setColor(status === 'confirmed' ? 0x00ff00 : status === 'void' ? 0xff0000 : 0xffa500)
     .setTimestamp()
     .setFooter({ text: `Status: ${status.toUpperCase()}` });
 
-  if (status === 'confirmed' && log.winner) {
-    const winningTeam = log.winner === 'team1' ? 'Team 1' : 'Team 2';
-    embed.addFields({ name: '🏆 Winner', value: winningTeam, inline: false });
-  }
-
-  if (options.mvp) {
-    embed.addFields({ name: '🎖️ MVP', value: options.mvp, inline: true });
-  }
-
-  if (options.topKiller) {
-    embed.addFields({ name: '⚔️ Top Killer', value: options.topKiller, inline: true });
-  }
-
-  if (options.bedbreaker) {
-    embed.addFields({ name: '🔨 Winning Bedbreaker', value: options.bedbreaker, inline: true });
-  }
-  if (options.loseBedbreaker && options.loseBedbreaker !== 'null') {
-    embed.addFields({ name: '🔨 Losing Bedbreaker', value: options.loseBedbreaker, inline: true });
-  }
-
-  if (options.confirmedBy) {
-    embed.addFields({ name: '✅ Confirmed By', value: options.confirmedBy, inline: false });
-  }
+  if (status === 'confirmed' && log.winner) embed.addFields({ name: '🏆 Winner', value: log.winner === 'team1' ? 'Team 1' : 'Team 2', inline: false });
+  if (options.mvp) embed.addFields({ name: '🎖️ MVP', value: options.mvp, inline: true });
+  if (options.topKiller) embed.addFields({ name: '⚔️ Top Killer', value: options.topKiller, inline: true });
+  if (options.bedbreaker) embed.addFields({ name: '🔨 Winning Bedbreaker', value: options.bedbreaker, inline: true });
+  if (options.loseBedbreaker && options.loseBedbreaker !== 'null') embed.addFields({ name: '🔨 Losing Bedbreaker', value: options.loseBedbreaker, inline: true });
+  if (options.confirmedBy) embed.addFields({ name: '✅ Confirmed By', value: options.confirmedBy, inline: false });
 
   await message.edit({ embeds: [embed] });
 }
 
-module.exports = {
-  loadLogs,
-  saveLogs,
-  getLogs,
-  logMatch,
-  updateMatchStatus,
-  updateMatchDetails,
-  sendLogToStaffChannel,
-  editLogEmbed
-};
+module.exports = { loadLogs, saveLogs, getMatchLog, logMatch, updateMatchStatus, updateMatchDetails, sendLogToStaffChannel, editLogEmbed };',

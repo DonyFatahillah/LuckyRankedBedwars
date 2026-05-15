@@ -13,6 +13,7 @@
   const autoConfirmPendingMatches = require('./utils/autoConfirmPending'); 
   const runCleanup = require('./scripts/cleanupPlayers');  
   const syncRanks = require('./scripts/syncRanks');
+  const syncVerifiedUsers = require('./scripts/syncVerifiedUsers');
   const {cleanInvalidMessages} = require('./events/messageCreatePacks')
   const connectDB = require('./config/database');
   const { setupResultListener } = require('./utils/redisClient');
@@ -21,6 +22,9 @@
 
   try {
     await connectDB();
+    // Run syncVerifiedUsers on startup in the background
+    syncVerifiedUsers().catch(console.error);
+
     ({ loadLogs } = require('./utils/matchLogger'));
     cleanMatchLogs = require('./scripts/cleanupMatchLogs');
 
@@ -138,10 +142,9 @@
         type: ActivityType.Watching,
       });
 
-      await cleanStaleGameChannels(client);
-      await checkAllQueueChannelsOnStartup(client);
-      await cleanupExpiredPunishments(client);
-      setInterval(() => cleanupExpiredPunishments(client), 30_000);
+      // Task runner
+      const maintenanceTask = require('./tasks/maintenance');
+      await maintenanceTask.execute(client);
 
       setupResultListener(client);
 
@@ -156,71 +159,39 @@
   await client.login(process.env.DISCORD_TOKEN);
 
 client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const command = client.commands.get(interaction.commandName);
+  if (!command) return;
+
   try {
-    // Slash commands
-    if (interaction.isChatInputCommand()) {
-      const command = client.commands.get(interaction.commandName);
-      if (!command) return;
-
-      try {
-        await command.execute(interaction);
-      } catch (err) {
-        console.error(`[Command Error] /${interaction.commandName}:`, err);
-
-        if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply({
-            content: '⚠️ An error occurred while executing this command.',
-            ephemeral: true,
-          }).catch(() => {});
-        }
-
-        // Log to bot status channel
-        const statusChannel = await client.channels.fetch(process.env.BOT_STATUS_CHANNEL_ID).catch(() => null);
-        if (statusChannel) {
-          const embed = new EmbedBuilder()
-            .setTitle(`❌ Error in /${interaction.commandName}`)
-            .setDescription('An error occurred while executing a command.')
-            .addFields({
-              name: 'Error Message',
-              value: `\`\`\`${(err.stack || err.message || err.toString()).slice(0, 1000)}\`\`\``,
-            })
-            .setColor(0xff0000)
-            .setTimestamp();
-
-          await statusChannel.send({ embeds: [embed] }).catch(console.error);
-        }
-      }
-    }
-
-    // Autocomplete
-    else if (interaction.isAutocomplete()) {
-      const command = client.commands.get(interaction.commandName);
-      if (!command || !command.autocomplete) return;
-
-      try {
-        await command.autocomplete(interaction);
-      } catch (err) {
-        console.error(`[Autocomplete Error] /${interaction.commandName}:`, err);
-
-        // Optionally log autocomplete errors to bot status channel
-        const statusChannel = await client.channels.fetch(process.env.BOT_STATUS_CHANNEL_ID).catch(() => null);
-        if (statusChannel) {
-          const embed = new EmbedBuilder()
-            .setTitle(`⚠️ Autocomplete Error in /${interaction.commandName}`)
-            .setDescription('An error occurred while processing autocomplete.')
-            .addFields({
-              name: 'Error Message',
-              value: `\`\`\`${(err.stack || err.message || err.toString()).slice(0, 1000)}\`\`\``,
-            })
-            .setColor(0xffa500)
-            .setTimestamp();
-
-          await statusChannel.send({ embeds: [embed] }).catch(console.error);
-        }
-      }
-    }
+    // Standard execution wrapper
+    await command.execute(interaction);
   } catch (err) {
-    console.error('[Interaction Error]', err);
+    console.error(`[Command Error] /${interaction.commandName}:`, err);
+
+    const errorMessage = '⚠️ An internal error occurred while executing this command.';
+
+    if (interaction.replied || interaction.deferred) {
+      await interaction.editReply({ content: errorMessage }).catch(() => {});
+    } else {
+      await interaction.reply({ content: errorMessage, ephemeral: true }).catch(() => {});
+    }
+
+    // Log to bot status channel
+    const statusChannel = await client.channels.fetch(process.env.BOT_STATUS_CHANNEL_ID).catch(() => null);
+    if (statusChannel) {
+      const embed = new EmbedBuilder()
+        .setTitle(`❌ Error in /${interaction.commandName}`)
+        .addFields({
+          name: 'Error Message',
+          value: `\`\`\`${(err.stack || err.message || err.toString()).slice(0, 1000)}\`\`\``,
+        })
+        .setColor(0xff0000)
+        .setTimestamp();
+
+      await statusChannel.send({ embeds: [embed] }).catch(console.error);
+    }
   }
 });
 

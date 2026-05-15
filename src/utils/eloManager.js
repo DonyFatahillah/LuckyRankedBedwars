@@ -1,41 +1,23 @@
-const fs = require('fs');
-const path = require('path');
+const { redis } = require('./redisClient');
 const PlayerModel = require('../models/PlayerSchema');
-const eloCache = require('../cache/eloCache');
 
-const DATA_DIR = path.join(__dirname, '../../data');
-const ELO_PATH = path.join(DATA_DIR, 'elo.json');
-
-let eloData = {};
-
-function initializeEloFile() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-
-  if (!fs.existsSync(ELO_PATH)) {
-    fs.writeFileSync(ELO_PATH, JSON.stringify({}), 'utf8');
-  }
-
+async function getElo(userId) {
   try {
-    const raw = fs.readFileSync(ELO_PATH, 'utf8');
-    eloData = JSON.parse(raw);
+    const elo = await redis.get(`elo:${userId}`);
+    return elo ? parseInt(elo) : 0;
   } catch (err) {
-    console.error('[ELO] Failed to load elo.json. Resetting.', err);
-    eloData = {};
-    fs.writeFileSync(ELO_PATH, JSON.stringify(eloData, null, 2));
+    console.error(`[ELO] Failed to get ELO from Redis for ${userId}:`, err);
+    return 0;
   }
-}
-
-function getElo(userId) {
-  return eloData[userId] ?? 0;
 }
 
 async function setElo(userId, newElo) {
-  // Update local cache and JSON
-  eloData[userId] = newElo;
-  saveEloData();
-  eloCache.set(userId, newElo);
+  // Update Redis
+  try {
+    await redis.set(`elo:${userId}`, newElo);
+  } catch (err) {
+    console.error(`[ELO] Failed to set ELO in Redis for ${userId}:`, err);
+  }
 
   // Update MongoDB
   try {
@@ -48,16 +30,6 @@ async function setElo(userId, newElo) {
     console.error(`[ELO-Mongo] Failed to update ELO for ${userId}:`, err);
   }
 }
-
-function saveEloData() {
-  try {
-    fs.writeFileSync(ELO_PATH, JSON.stringify(eloData, null, 2), 'utf8');
-  } catch (err) {
-    console.error('[ELO] Failed to save elo.json:', err);
-  }
-}
-
-initializeEloFile();
 
 module.exports = {
   getElo,

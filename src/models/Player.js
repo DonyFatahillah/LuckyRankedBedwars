@@ -1,66 +1,32 @@
 const { getElo, setElo } = require('../utils/eloManager');
 const { updateRankRoles } = require('../utils/EloRank');
-const fs = require('fs');
-const path = require('path');
+const { getPlayerCache, setPlayerCache, deletePlayerCache } = require('../utils/redisClient');
 const PlayerModel = require('./PlayerSchema');
-
-const STATS_PATH = path.join(__dirname, '../../data/playerStats.json');
-let stats = {};
-
-if (fs.existsSync(STATS_PATH)) {
-  try {
-    stats = JSON.parse(fs.readFileSync(STATS_PATH, 'utf-8'));
-  } catch (err) {
-    console.error('[Player] Failed to parse playerStats.json:', err);
-    stats = {};
-  }
-} else {
-  fs.writeFileSync(STATS_PATH, JSON.stringify({}, null, 2));
-}
-
-function saveStats() {
-  fs.writeFileSync(STATS_PATH, JSON.stringify(stats, null, 2));
-}
 
 class Player {
   /**
    * @param {GuildMember} member
+   * @param {Object} data - Player data object
    */
-  constructor(member) {
+  constructor(member, data) {
     this.member = member;
     this.id = member.id;
     this.discordUsername = member.user.username;
     this.displayName = member.displayName;
     this.elo = getElo(this.id);
 
-    if (!stats[this.id]) {
-      stats[this.id] = {
-        wins: 0,
-        losses: 0,
-        winstreak: 0,
-        mvps: 0,
-        bedsBroken: 0,
-        prefix: true,
-        recentlyPlayed: [],
-        lastPlayedAt: 0,
-        discordUsername: this.discordUsername,
-        ingameUsername: null,
-        displayUsername: null
-      };
-    }
-
-    const playerStats = stats[this.id];
-    this.discordUsername = playerStats.discordUsername || member.user.username;
-    this.ingameUsername = playerStats.ingameUsername || null;
-    this.displayUsername = playerStats.displayUsername || null;
-    this.wins = playerStats.wins ?? 0;
-    this.losses = playerStats.losses ?? 0;
-    this.winstreak = playerStats.winstreak ?? 0;
-    this.topKills = playerStats.mvps ?? 0;
-    this.bedsBroken = playerStats.bedsBroken ?? 0;
-    this.prefixEnabled = playerStats.prefix ?? true;
-    this.recentlyPlayed = playerStats.recentlyPlayed ?? [];
-    this.lastPlayedAt = playerStats.lastPlayedAt ?? 0;
+    // Load from provided data
+    this.discordUsername = data.discordUsername || member.user.username;
+    this.ingameUsername = data.ingameUsername || null;
+    this.displayUsername = data.displayUsername || null;
+    this.wins = data.wins ?? 0;
+    this.losses = data.losses ?? 0;
+    this.winstreak = data.winstreak ?? 0;
+    this.topKills = data.mvps ?? 0;
+    this.bedsBroken = data.bedsBroken ?? 0;
+    this.prefixEnabled = data.prefix ?? true;
+    this.recentlyPlayed = data.recentlyPlayed ?? [];
+    this.lastPlayedAt = data.lastPlayedAt ?? 0;
 
     if (Date.now() - this.lastPlayedAt > 7 * 24 * 60 * 60 * 1000) {
       this.recentlyPlayed = [];
@@ -68,20 +34,47 @@ class Player {
   }
 
   static async load(member) {
-    const player = new Player(member);
-    try {
+    // 1. Try to get from Redis
+    let data = await getPlayerCache(member.id);
+    
+    // 2. If not in Redis, get from Mongo
+    if (!data) {
       const doc = await PlayerModel.findOne({ userId: member.id });
       if (doc) {
-        player.ingameUsername = doc.ingameUsername;
-        player.displayUsername = doc.displayUsername;
-        stats[player.id].ingameUsername = doc.ingameUsername;
-        stats[player.id].displayUsername = doc.displayUsername;
-        player.elo = doc.elo;
+        data = {
+          wins: doc.wins,
+          losses: doc.losses,
+          winstreak: doc.winstreak,
+          mvps: doc.mvps,
+          bedsBroken: doc.bedsBroken,
+          prefix: doc.prefix,
+          recentlyPlayed: doc.recentlyPlayed,
+          lastPlayedAt: doc.lastPlayedAt,
+          discordUsername: doc.discordUsername,
+          ingameUsername: doc.ingameUsername,
+          displayUsername: doc.displayUsername
+        };
+      } else {
+        // Defaults if no doc found
+        data = {
+          wins: 0,
+          losses: 0,
+          winstreak: 0,
+          mvps: 0,
+          bedsBroken: 0,
+          prefix: true,
+          recentlyPlayed: [],
+          lastPlayedAt: 0,
+          discordUsername: member.user.username,
+          ingameUsername: null,
+          displayUsername: null
+        };
       }
-    } catch (err) {
-      console.error(`[Player] Failed to load data from Mongo for ${member.id}:`, err);
+      // Save to cache for future requests
+      await setPlayerCache(member.id, data);
     }
-    return player;
+    
+    return new Player(member, data);
   }
 
   get username() {
@@ -222,7 +215,9 @@ class Player {
 
   async save() {
     await setElo(this.id, this.elo);
-    stats[this.id] = {
+    
+    // Data to persist
+    const data = {
       wins: this.wins,
       losses: this.losses,
       winstreak: this.winstreak,
@@ -235,7 +230,9 @@ class Player {
       ingameUsername: this.ingameUsername,
       displayUsername: this.displayUsername
     };
-    saveStats();
+
+    // Update Redis Cache
+    await setPlayerCache(this.id, data);
 
     // Update MongoDB
     try {
@@ -244,17 +241,7 @@ class Player {
         {
           userId: this.id,
           elo: this.elo,
-          wins: this.wins,
-          losses: this.losses,
-          winstreak: this.winstreak,
-          mvps: this.topKills,
-          bedsBroken: this.bedsBroken,
-          prefix: this.prefixEnabled,
-          recentlyPlayed: this.recentlyPlayed,
-          lastPlayedAt: this.lastPlayedAt,
-          discordUsername: this.discordUsername,
-          ingameUsername: this.ingameUsername,
-          displayUsername: this.displayUsername
+          ...data
         },
         { upsert: true }
       );

@@ -468,61 +468,41 @@ async function movePlayersToVoiceChannels(guild, teams, categoryId, specificVoic
   await Promise.all(movePromises);
 }
 
-// -------------------------
-// Persistence
-// -------------------------
-function saveActiveGames() {
-  fs.writeFileSync(ACTIVE_GAMES_PATH, JSON.stringify(Array.from(_activeGames.entries()), null, 2));
-}
-
-async function loadActiveGames() {
-  if (!fs.existsSync(ACTIVE_GAMES_PATH)) return;
-  try {
-    const data = JSON.parse(fs.readFileSync(ACTIVE_GAMES_PATH));
-    _activeGames = new Map(data);
-    console.log(`[ActiveGames] Loaded ${_activeGames.size} games.`);
-  } catch (err) {
-    console.error(`[ActiveGames] Failed to load:`, err);
-    _activeGames = new Map();
-  }
-}
+const { redis } = require('../utils/redisClient');
+const ActiveGame = require('../models/ActiveGame');
 
 async function setActiveGame(gameId, data) {
-  _activeGames.set(gameId, data);
-  saveActiveGames();
-
-  // Mongo Sync
-  try {
-    await ActiveGameModel.findOneAndUpdate(
-      { gameId },
-      data,
-      { upsert: true }
-    );
-  } catch (err) {
-    console.error(`[ActiveGames-Mongo] Failed to save game #${gameId}:`, err);
-  }
+  const game = new ActiveGame(data);
+  await game.save();
 }
 
 async function updateActiveGame(gameId, updateData) {
-  const match = _activeGames.get(gameId);
-  if (!match) return;
-  await setActiveGame(gameId, { ...match, ...updateData });
+  const game = await ActiveGame.load(gameId);
+  if (!game) return;
+  Object.assign(game, updateData);
+  await game.save();
 }
 
 async function deleteActiveGame(gameId) {
-  _activeGames.delete(gameId);
-  saveActiveGames();
+  const game = await ActiveGame.load(gameId);
+  if (game) await game.delete();
+}
 
-  try {
-    await ActiveGameModel.deleteOne({ gameId });
-  } catch (err) {
-    console.error(`[ActiveGames-Mongo] Failed to delete game #${gameId}:`, err);
+async function getActiveGames() {
+  const keys = await redis.keys('game:*');
+  const games = [];
+  for (const key of keys) {
+    const raw = await redis.get(key);
+    games.push(JSON.parse(raw));
   }
+  return games;
 }
 
-function getActiveGames() {
-  return _activeGames;
+// Note: loadActiveGames is now largely handled by ActiveGame.load on demand
+async function loadActiveGames() {
+  console.log('[ActiveGames] Migration to Redis complete. Using on-demand loading.');
 }
+
 
 module.exports = {
   getActiveGames,

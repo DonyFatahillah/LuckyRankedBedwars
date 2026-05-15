@@ -167,6 +167,32 @@ function setupResultListener(client) {
   });
 }
 
+async function setPlayerCache(userId, data) {
+  try {
+    await redis.set(`player.cache:${userId}`, JSON.stringify(data), 'EX', 3600); // Cache for 1 hour
+  } catch (err) {
+    console.error(`[Redis] Failed to cache player ${userId}:`, err);
+  }
+}
+
+async function getPlayerCache(userId) {
+  try {
+    const data = await redis.get(`player.cache:${userId}`);
+    return data ? JSON.parse(data) : null;
+  } catch (err) {
+    console.error(`[Redis] Failed to get player cache ${userId}:`, err);
+    return null;
+  }
+}
+
+async function deletePlayerCache(userId) {
+  try {
+    await redis.del(`player.cache:${userId}`);
+  } catch (err) {
+    console.error(`[Redis] Failed to delete player cache ${userId}:`, err);
+  }
+}
+
 module.exports = {
   redis,
   redisSub,
@@ -174,5 +200,8 @@ module.exports = {
   publishMatchVoid,
   publishPlayerOnline,
   getPlayerOnlineStatus,
-  setupResultListener
+  setupResultListener,
+  setPlayerCache,
+  getPlayerCache,
+  deletePlayerCache
 };
