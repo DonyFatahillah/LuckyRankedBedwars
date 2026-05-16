@@ -141,7 +141,7 @@ async function handleEloQueue(newState, eloQueue, party = null) {
       }
 
       // ⚠️ ELO range validation
-      const player = new Player(member);
+      const player = await Player.load(member);
       if (player.elo < eloQueue.minElo || player.elo > eloQueue.maxElo) {
         await moveToWaitingRoom(
           member,

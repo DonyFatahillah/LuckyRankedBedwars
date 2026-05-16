@@ -25,7 +25,7 @@ module.exports = {
     const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
     if (!member) return interaction.respond([]);
 
-    const player = new Player(member);
+    const player = await Player.load(member);
     const choices = player.recentlyPlayed.map(id => ({ name: id, value: id }));
 
     const filtered = choices.filter(choice =>
@@ -44,7 +44,7 @@ module.exports = {
       return interaction.reply({ content: '❌ Failed to fetch your member data.', ephemeral: true });
     }
 
-    const player = new Player(member);
+    const player = await Player.load(member);
 
     if (!player.recentlyPlayed.includes(gameId)) {
       return interaction.reply({

@@ -87,7 +87,7 @@ module.exports = {
     const results = [];
     for (const member of members.filter(Boolean)) {
       try {
-        const player = new Player(member);
+        const player = await Player.load(member);
 
         // Restore oldElo if exists in logs
         const oldElo = logEntry.players?.[member.id]?.oldElo ?? player.elo;

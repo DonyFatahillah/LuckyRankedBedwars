@@ -55,6 +55,6 @@ module.exports = {
 
 // Helper: find highest ELO player in team
 async function findTeamCaptain(teamMembers) {
-  const players = await Promise.all(teamMembers.map(m => new Player(m)));
+  const players = await Promise.all(teamMembers.map(m => Player.load(m)));
   return players.reduce((top, p) => (p.elo > top.elo ? p : top), players[0]);
 }

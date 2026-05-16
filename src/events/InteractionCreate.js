@@ -49,7 +49,7 @@ module.exports = {
     }
 
     if (action === 'approve') {
-      const player = new Player(member);
+      const player = await Player.load(member);
       const cleanNickname = nickname.trim();
 
       await player.setIngameUsername(cleanNickname);

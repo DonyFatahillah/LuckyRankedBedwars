@@ -51,7 +51,7 @@ async function buildPartyInfoEmbed(party, guild, titleOverride = null) {
   const memberMentions = await Promise.all(party.members.map(async (id) => {
     try {
       const member = await guild.members.fetch(id);
-      const player = new Player(member);
+      const player = await Player.load(member);
       return `• **${player.username}**`;
     } catch {
       return `• **<@${id}>**`;
@@ -61,7 +61,7 @@ async function buildPartyInfoEmbed(party, guild, titleOverride = null) {
   let leaderName = `<@${party.leaderId}>`;
   try {
     const leader = await guild.members.fetch(party.leaderId);
-    const leaderPlayer = new Player(leader);
+    const leaderPlayer = await Player.load(leader);
     leaderName = leaderPlayer.username;
   } catch {}
 
@@ -335,10 +335,12 @@ module.exports = {
           try {
             const members = await Promise.all(p.members.map(async id => {
               const m = await interaction.guild.members.fetch(id).catch(() => null);
-              return m ? new Player(m).username : `<@${id}>`;
+              if (!m) return `<@${id}>`;
+              const pl = await Player.load(m);
+              return pl.username;
             }));
             const leader = await interaction.guild.members.fetch(p.leaderId).catch(() => null);
-            const leaderName = leader ? new Player(leader).username : `<@${p.leaderId}>`;
+            const leaderName = leader ? (await Player.load(leader)).username : `<@${p.leaderId}>`;
             embed.addFields({ name: `${leaderName} (Leader)`, value: members.join(', '), inline: false });
           } catch {}
         }

@@ -37,10 +37,10 @@ module.exports = {
       return interaction.reply({ content: '❌ You already claimed your ELO.', ephemeral: true });
     }
 
-    const player = new Player(member);
+    const player = await Player.load(member);
 
     if (player.elo !== 0) {
-      return interaction.reply({ content: '❌ You can only claim if your ELO is **0**.', ephemeral: true });
+      return interaction.reply({ content: `❌ You can only claim if your ELO is **0** (Current: **${player.elo}**).`, ephemeral: true });
     }
 
     const roles = member.roles.cache;

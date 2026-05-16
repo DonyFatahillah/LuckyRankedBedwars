@@ -26,7 +26,7 @@ module.exports = {
       return interaction.reply({ content: '❌ Failed to find that member.', ephemeral: true });
     }
 
-    const player = new Player(member);
+    const player = await Player.load(member);
     await player.setwin(amount);
 
     return interaction.reply({

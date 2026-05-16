@@ -107,7 +107,7 @@ module.exports = {
         const member = await guild.members.fetch(playerId).catch(() => null);
         if (!member) continue;
 
-        const player = new Player(member);
+        const player = await Player.load(member);
         const oldElo = player.elo;
 
         const isWinner = winners.includes(playerId);
@@ -261,13 +261,13 @@ module.exports = {
       allPlayers.map(pid => interaction.guild.members.fetch(pid).catch(() => null))
     );
 
-    const choices = members.filter(Boolean).map(member => {
-      const player = new Player(member);
+    const choices = await Promise.all(members.filter(Boolean).map(async member => {
+      const player = await Player.load(member);
       return {
         name: member.displayName,
         value: player.username
       };
-    });
+    }));
 
     return interaction.respond(
       choices.filter(c => c.name.toLowerCase().includes(focused.value.toLowerCase())).slice(0, 25)

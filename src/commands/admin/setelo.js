@@ -29,7 +29,7 @@ module.exports = {
       return interaction.reply({ content: '❌ User not found in this server.', ephemeral: true });
     }
 
-    const player = new Player(member);
+    const player = await Player.load(member);
     await player.setElo(newElo); // ✅ sets + saves + updates nickname + role
 
     await interaction.reply({

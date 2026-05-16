@@ -28,7 +28,7 @@ module.exports = async function autoConfirmPendingMatches(client) {
 
     const memberMap = new Map(); // Map of memberId → Player
     for (const member of members.filter(Boolean)) {
-      const player = new Player(member);
+      const player = await Player.load(member);
       memberMap.set(member.id, { member, player });
     }
 

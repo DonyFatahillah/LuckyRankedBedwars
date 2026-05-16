@@ -105,8 +105,7 @@ module.exports = {
       let winTeam = null;
 
       for (const member of members.filter(Boolean)) {
-        const player = new Player(member);
-        await player.getStats(); // no-op, just for clarity
+        const player = await Player.load(member);
         const username = player.username?.toLowerCase();
 
         if (username === winBedbreakerUsername.toLowerCase()) {
@@ -213,8 +212,7 @@ module.exports = {
       members
         .filter(Boolean)
         .map(async member => {
-          const player = new Player(member);
-          await player.getStats(); // no-op, for clarity
+          const player = await Player.load(member);
           return {
             name: player.username,
             value: player.username

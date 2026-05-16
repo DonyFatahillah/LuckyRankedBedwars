@@ -27,7 +27,7 @@ module.exports = {
       return interaction.reply({ content: '❌ Could not find that member in the server.', ephemeral: true });
     }
 
-    const player = new Player(member);
+    const player = await Player.load(member);
 
     await player.setIngameUsername(newUsername);
 

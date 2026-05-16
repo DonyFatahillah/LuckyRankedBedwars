@@ -175,7 +175,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
   const captains = await Promise.all(
     teams.map(async team => {
-      const instances = await Promise.all(team.map(m => new Player(m)));
+      const instances = await Promise.all(team.map(m => Player.load(m)));
       return instances.reduce((top, p) => (p.elo > top.elo ? p : top), instances[0]).member.id;
     })
   );

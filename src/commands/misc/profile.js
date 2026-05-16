@@ -89,7 +89,7 @@ module.exports = {
       mcName = baseName;
     } else if (member) {
       // ✅ Fallback if no DB entry yet but member exists
-      const player = new Player(member);
+      const player = await Player.load(member);
       stats = player.getStats();
       rank = getRankByElo(player.elo);
       const baseName = player.ingameUsername || player.discordUsername;
@@ -99,8 +99,9 @@ module.exports = {
       return interaction.editReply({ content: '❌ Unable to find that user data' });
     }
 
-    const skinRenderUrl = (playerData?.ingameUsername || (member ? (new Player(member)).ingameUsername : null)) 
-      ? `https://mc-heads.net/body/${playerData?.ingameUsername || (new Player(member)).ingameUsername}/300`
+    const playerObj = member ? await Player.load(member) : null;
+    const skinRenderUrl = (playerData?.ingameUsername || playerObj?.ingameUsername) 
+      ? `https://mc-heads.net/body/${playerData?.ingameUsername || playerObj.ingameUsername}/300`
       : `https://mc-heads.net/body/Steve/300`;
 
     // Load assets (background + skin)
