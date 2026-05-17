@@ -45,7 +45,7 @@ module.exports = {
 
         const lines = pageEntries.map((entry, index) => {
           const rank = getRankByElo(entry.elo).name;
-          return `**${page * PAGE_SIZE + index + 1}.** \`${entry.username}\` — **${entry.elo}** ELO — *${rank}* (W: ${entry.wins} / L: ${entry.losses})`;
+          return `**${page * PAGE_SIZE + index + 1}.** \`${entry.username}\` — **${entry.elo}** ELO — **${rank}** (W: ${entry.wins} / L: ${entry.losses})`;
         });
 
         const embed = new EmbedBuilder()
