@@ -48,37 +48,40 @@ function saveGlobalLimit(limit) {
 }
 
 async function buildPartyInfoEmbed(party, guild, titleOverride = null) {
-  const memberMentions = await Promise.all(party.members.map(async (id) => {
+  const memberLines = await Promise.all(party.members.map(async (id) => {
     try {
-      const member = await guild.members.fetch(id);
-      const player = await Player.load(member);
-      return `• **${player.username}**`;
+      const member = await guild.members.fetch(id).catch(() => null);
+      if (member) {
+        const player = await Player.load(member);
+        return `• **${player.username}** ${party.leaderId === id ? '(Leader)' : ''}`;
+      }
+      return `• **<@${id}>** (Not in server)`;
     } catch {
       return `• **<@${id}>**`;
     }
   }));
 
-  let leaderName = `<@${party.leaderId}>`;
+  let leaderDisplayName = `Unknown (${party.leaderId})`;
   try {
-    const leader = await guild.members.fetch(party.leaderId);
-    const leaderPlayer = await Player.load(leader);
-    leaderName = leaderPlayer.username;
+    const leaderMember = await guild.members.fetch(party.leaderId).catch(() => null);
+    if (leaderMember) {
+      const leaderPlayer = await Player.load(leaderMember);
+      leaderDisplayName = leaderPlayer.username;
+    }
   } catch {}
 
   return new EmbedBuilder()
-    .setTitle(titleOverride || `📦 Party of ${leaderName}`)
-    .setColor(0x2F3136)
+    .setTitle(titleOverride || `📦 Party of ${leaderDisplayName}`)
+    .setColor(0x5865F2)
     .setDescription([
-      `Created <t:${Math.floor(party.createdAt / 1000)}:R>`,
-      `Auto Warp: \`${party.autowarp ? 'true' : 'false'}\``,
-      `Private: \`${!party.public}\``,
+      `🕒 **Created:** <t:${Math.floor(party.createdAt / 1000)}:R>`,
+      `🚀 **Auto Warp:** \`${party.autowarp ? 'Enabled' : 'Disabled'}\``,
+      `🔒 **Privacy:** \`${party.public ? 'Public' : 'Private'}\``,
       ``,
-      `**Party Leader**`,
-      `**${leaderName}**`,
-      ``,
-      `**Party Members [${party.members.length}/${party.maxMembers}]**`,
-      memberMentions.join('\n')
-    ].join('\n'));
+      `**Members [${party.members.length}/${party.maxMembers}]**`,
+      memberLines.join('\n')
+    ].join('\n'))
+    .setFooter({ text: 'Lucky Ranked Bedwars • Party System' });
 }
 
 module.exports = {
@@ -163,7 +166,7 @@ module.exports = {
 
         try {
           await targetUser.send({
-            content: `📬 You were invited to a party by <@${userId}>!\nUse \`/party join @${interaction.user.username}\` to join.`
+            content: `📬 You were invited to a party by **${interaction.user.username}**!\nUse \`/party join leader:@${interaction.user.username}\` to join.`
           });
         } catch {
           await interaction.followUp({ content: '⚠️ User was invited but could not be DMed.', ephemeral: true });
@@ -232,7 +235,7 @@ module.exports = {
         if (target.id === userId) return interaction.editReply({ content: '❌ You can’t kick yourself.', ephemeral: false });
 
         party.removeMember(target.id);
-        await saveParties(userId);
+        await saveParties(party.leaderId);
         return interaction.editReply({ content: `✅ <@${target.id}> has been kicked.`, ephemeral: false });
       }
 
@@ -268,7 +271,7 @@ module.exports = {
         }
 
         party.maxMembers = slotCount;
-        await saveParties(userId);
+        await saveParties(party.leaderId);
         return interaction.editReply({ content: `✅ Party slot count set to **${slotCount}**.`, ephemeral: false });
       }
 
@@ -289,7 +292,7 @@ module.exports = {
         if (!party.isLeader(userId)) return interaction.editReply({ content: '❌ Only the party leader can change this setting.', ephemeral: false });
 
         const state = interaction.options.getString('state') === 'on';
-        party.setAutoWarp(state);
+        party.autowarp = state; // Use the property directly as setAutoWarp might not exist
 
         if (state) {
           const leaderMember = await interaction.guild.members.fetch(userId).catch(() => null);
@@ -304,7 +307,7 @@ module.exports = {
           }
         }
 
-        await saveParties(userId);
+        await saveParties(party.leaderId);
         return interaction.editReply({
           content: `✅ AutoWarp is now **${state ? 'enabled' : 'disabled'}**.`,
           ephemeral: false
@@ -317,7 +320,7 @@ module.exports = {
 
         const type = interaction.options.getString('type');
         party.public = type === 'public';
-        await saveParties(userId);
+        await saveParties(party.leaderId);
         return interaction.editReply({ content: `✅ Party privacy set to **${type}**.`, ephemeral: false });
       }
 

@@ -44,12 +44,7 @@ async function loadParties() {
       const raw = await redis.get(key);
       const rawParty = JSON.parse(raw);
       
-      const p = new Party(rawParty.leaderId, rawParty.maxMembers || DEFAULT_MAX_MEMBERS);
-      p.members = rawParty.members;
-      p.invited = rawParty.invited;
-      p.autowarp = rawParty.autowarp ?? true;
-      p.public = rawParty.public ?? false;
-      p.createdAt = rawParty.createdAt ?? Date.now();
+      const p = new Party(rawParty);
       parties.set(rawParty.leaderId, p);
     }
     console.log(`[PartySystem] Loaded ${parties.size} parties from Redis.`);
@@ -103,7 +98,7 @@ async function createParty(leaderId, maxMembers = DEFAULT_MAX_MEMBERS) {
   if (getPartyByUser(leaderId)) return null;
   await removeFromAllParties(leaderId);
 
-  const party = new Party(leaderId, maxMembers);
+  const party = new Party({ leaderId, maxMembers });
   party.createdAt = Date.now();
   parties.set(leaderId, party);
   await saveParties(leaderId);

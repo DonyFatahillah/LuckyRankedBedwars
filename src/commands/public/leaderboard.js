@@ -8,8 +8,6 @@ const {
 } = require('discord.js');
 
 const { getRankByElo } = require('../../utils/EloRank');
-const eloCache = require('../../cache/eloCache');
-const Player = require('../../models/Player');
 const PlayerModel = require('../../models/PlayerSchema');
 
 const PAGE_SIZE = 10;
@@ -24,31 +22,30 @@ module.exports = {
 
     try {
       let currentPage = 0;
-      const sorted = eloCache.getSortedEntries();
-      console.log(`[Leaderboard Debug] Sorted entries count: ${sorted.length}`);
-      const validEntries = [];
-
-      // Optimize: Fetch players directly from database in chunks instead of fetching all members
-      const userIds = sorted.map(([id]) => id);
-      const players = await PlayerModel.find({ userId: { $in: userIds } });
+      
+      // Fetch all players from DB, sorted by ELO descending
+      // We fetch all because the existing pagination logic handles it in-memory
+      // In a larger system, we should use DB-level pagination
+      const players = await PlayerModel.find({}).sort({ elo: -1 }).lean();
       console.log(`[Leaderboard Debug] Players found in DB: ${players.length}`);
-      const playerMap = new Map(players.map(p => [p.userId, p]));
 
-      for (const [userId, elo] of sorted) {
-        const playerData = playerMap.get(userId);
-        const username = playerData?.ingameUsername || `Unknown (${userId.slice(-4)})`;
-        validEntries.push({ userId, elo, username });
-      }
+      const validEntries = players.map(p => ({
+        userId: p.userId,
+        elo: p.elo || 0,
+        username: p.ingameUsername || p.discordUsername || `Unknown (${p.userId.slice(-4)})`,
+        wins: p.wins || 0,
+        losses: p.losses || 0
+      }));
 
       const totalPages = Math.ceil(validEntries.length / PAGE_SIZE);
 
-      // Step 2: Page renderer (uses cached validEntries)
+      // Step 2: Page renderer (uses validEntries)
       function renderPage(page) {
         const pageEntries = validEntries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
         const lines = pageEntries.map((entry, index) => {
           const rank = getRankByElo(entry.elo).name;
-          return `${page * PAGE_SIZE + index + 1}. ${entry.username} — ${entry.elo} ELO — ${rank}`;
+          return `**${page * PAGE_SIZE + index + 1}.** \`${entry.username}\` — **${entry.elo}** ELO — *${rank}* (W: ${entry.wins} / L: ${entry.losses})`;
         });
 
         const embed = new EmbedBuilder()

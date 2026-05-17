@@ -4,7 +4,7 @@ const path = require('path');
 require('dotenv').config();
 
 const { getRankByElo, updateRankRoles } = require('../utils/EloRank');
-const ELO_PATH = path.join(__dirname, '../../data/elo.json');
+const PlayerModel = require('../models/PlayerSchema');
 
 module.exports = async function runRankSync(client, membersArg = null) {
   const guildId = process.env.GUILD_ID;
@@ -13,7 +13,6 @@ module.exports = async function runRankSync(client, membersArg = null) {
     console.error('[Rank Sync] Missing GUILD_ID in .env');
     return;
   }
-
 
   const guild = await client.guilds.fetch(guildId).catch(() => null);
   if (!guild) {
@@ -24,22 +23,20 @@ module.exports = async function runRankSync(client, membersArg = null) {
   // Ensure members are fetched or use provided ones
   const members = membersArg || await guild.members.fetch();
 
-  // Load ELO data
-  let eloData = {};
-  if (fs.existsSync(ELO_PATH)) {
-    try {
-      eloData = JSON.parse(fs.readFileSync(ELO_PATH, 'utf-8'));
-    } catch (err) {
-      console.error('[Rank Sync] Failed to read elo.json:', err);
-      return;
-    }
+  // Load ELO data from MongoDB
+  let players = [];
+  try {
+    players = await PlayerModel.find({}, 'userId elo').lean();
+  } catch (err) {
+    console.error('[Rank Sync] Failed to fetch players from MongoDB:', err);
+    return;
   }
 
   const updated = [];
   const skipped = [];
 
-  // Use the cached members collection instead of individual fetch calls
-  for (const [userId, elo] of Object.entries(eloData)) {
+  for (const player of players) {
+    const { userId, elo } = player;
     const member = members.get(userId);
 
     if (!member) {

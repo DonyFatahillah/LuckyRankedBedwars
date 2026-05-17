@@ -7,7 +7,6 @@
   const addBedBrokenField = require('./scripts/addBedBreakField');
   const { loadParties } = require('./utils/partySystem');
   const { cleanupExpiredPunishments } = require('./utils/punishmentManager');
-  const eloCache = require('./cache/eloCache');
   const displayNameCache = require('./cache/displayNameCache');
   const mapPicker = require('./utils/mapPicker');  
   const autoConfirmPendingMatches = require('./utils/autoConfirmPending'); 
@@ -62,10 +61,8 @@
 
   console.log('[Startup] ✅ Discord client created');
   
-  client.eloCache = eloCache;
   client.displayNameCache = displayNameCache;
 
-  eloCache.refresh();
   mapPicker.loadMapList();  // Load ELO data on startup
 
   try {
@@ -125,9 +122,8 @@
         console.log('[Startup] Fetching guild members...');
         const members = await guild.members.fetch({ withPresences: false });
 
-        await eloCache.refresh();
-  		await displayNameCache.refresh(client, members);
-  		await mapPicker.loadMapList();
+        await displayNameCache.refresh(client, members);
+        await mapPicker.loadMapList();
         await cleanInvalidMessages(client);  
           
         await runCleanup(client, members);
