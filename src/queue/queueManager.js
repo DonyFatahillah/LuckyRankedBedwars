@@ -169,8 +169,14 @@ async function createMatch(guild, players, teamSize, options = {}) {
   const isHighTier = eloQueue && eloQueue.minElo >= 600;
 
   const hex = generateHexCode();
-  const team1 = players.slice(0, teamSize);
-  const team2 = players.slice(teamSize, teamSize * 2);
+  
+  // Shuffle the selected players to avoid repetitive teammate assignments
+  // We keep the first few and last few as potentially mixed to maintain some order, 
+  // or shuffle the whole list for better distribution.
+  const shuffledPlayers = shuffle([...players]);
+  
+  const team1 = shuffledPlayers.slice(0, teamSize);
+  const team2 = shuffledPlayers.slice(teamSize, teamSize * 2);
   const teams = [team1, team2];
 
   const captains = await Promise.all(
@@ -460,12 +466,14 @@ async function movePlayersToVoiceChannels(guild, teams, categoryId, specificVoic
 
   teams.forEach((team, i) => team.forEach(p => p.targetVC = voiceChannels[i]));
 
-  const movePromises = teams.flat().map(async p => {
-    const member = await guild.members.fetch(p.id).catch(() => null);
-    if (member && p.targetVC) return member.voice.setChannel(p.targetVC).catch(() => {});
-  });
-
-  await Promise.all(movePromises);
+  for (const team of teams) {
+    for (const p of team) {
+      const member = await guild.members.fetch(p.id).catch(() => null);
+      if (member && p.targetVC) {
+        await member.voice.setChannel(p.targetVC).catch(() => {});
+      }
+    }
+  }
 }
 
 const { redis } = require('../utils/redisClient');

@@ -35,27 +35,27 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   
   // Fetch members
   const memberMap = new Map();
-  await Promise.all(allPlayerIds.map(async id => {
+  for (const id of allPlayerIds) {
     const member = await guild.members.fetch(id).catch(() => null);
     if (member) memberMap.set(id, member);
-  }));
+  }
 
   // --- Determine winner from bedbreaker if needed ---
   let winnerTeam = winner;
   if (!winnerTeam && winBedbreaker) {
-    const bedbreakerPlayer = await Promise.all(
-      allPlayerIds.map(async id => {
-        const m = memberMap.get(id);
-        if (!m) return null;
-        const player = await Player.load(m);
-        return player.username.toLowerCase() === winBedbreaker.toLowerCase()
-          ? { id, player }
-          : null;
-      })
-    ).then(res => res.find(Boolean));
+    let bedbreakerPlayerId = null;
+    for (const id of allPlayerIds) {
+      const m = memberMap.get(id);
+      if (!m) continue;
+      const player = await Player.load(m);
+      if (player.username.toLowerCase() === winBedbreaker.toLowerCase()) {
+        bedbreakerPlayerId = id;
+        break;
+      }
+    }
 
-    if (bedbreakerPlayer) {
-      winnerTeam = teams[0].includes(bedbreakerPlayer.id) ? 'team1' : 'team2';
+    if (bedbreakerPlayerId) {
+      winnerTeam = teams[0].includes(bedbreakerPlayerId) ? 'team1' : 'team2';
     } else {
       console.warn(`[AutoConfirm] WinBedbreaker ${winBedbreaker} not found in either team for ${gameId}`);
       winnerTeam = 'team1'; // fallback
