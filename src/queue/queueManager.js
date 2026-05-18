@@ -425,7 +425,38 @@ async function createMatch(guild, players, teamSize, options = {}) {
   }
 }
 
-// ... rest of rules functions ...
+// -------------------------
+// Rules
+// -------------------------
+function getRulesForMatchType(teamSize) {
+  if (teamSize === 3 || teamSize === 4) {
+    const section = _queueRules[`${teamSize}v${teamSize}`];
+    if (!section) return fallbackRules(teamSize);
+
+    const formatSection = (title, list) =>
+      list?.length ? `**${title}:**\n> ${list.map(i => i.trim()).join('\n> ')}\n` : '';
+
+    const rulesText = [
+      formatSection('✅ Allowed', section.allowed),
+      formatSection('🕒 After Emerald II', section.after_emerald_ii),
+      formatSection('💥 After Any Bed Break', section.after_any_bed_break),
+      formatSection('⛔ Banned', section.banned)
+    ].join('\n');
+
+    return {
+      format: `${teamSize}v${teamSize}`,
+      rulesEmbed: rulesText
+    };
+  }
+  return fallbackRules(teamSize);
+}
+
+function fallbackRules(teamSize) {
+  return {
+    format: teamSize === 1 ? '1v1' : `${teamSize}v${teamSize}`,
+    rulesEmbed: ''
+  };
+}
 
 // -------------------------
 // Move players
