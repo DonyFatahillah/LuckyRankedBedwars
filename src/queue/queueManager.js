@@ -73,7 +73,7 @@ function generateHexCode() {
   return hex;
 }
 
-function getEligiblePlayers(members, targetCount, maxTeamSize = 4) {
+function getEligibleGroups(members, targetCount, maxTeamSize = 4) {
   const soloMembers = [];
   const partyGroups = [];
   const memberMap = new Map(members.map(m => [m.id, m]));
@@ -151,6 +151,11 @@ function getEligiblePlayers(members, targetCount, maxTeamSize = 4) {
   return selectedGroups;
 }
 
+function getEligiblePlayers(members, targetCount, maxTeamSize = 4) {
+  const groups = getEligibleGroups(members, targetCount, maxTeamSize);
+  return groups.flatMap(g => g.members);
+}
+
 function shuffle(array) {
   return array.sort(() => Math.random() - 0.5);
 }
@@ -162,7 +167,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
   if (!players || players.length === 0) return;
 
   const totalRequired = teamSize * 2;
-  const eligibleGroups = getEligiblePlayers(players, totalRequired, teamSize);
+  const eligibleGroups = getEligibleGroups(players, totalRequired, teamSize);
   
   let totalSelected = 0;
   eligibleGroups.forEach(g => totalSelected += g.members.length);
