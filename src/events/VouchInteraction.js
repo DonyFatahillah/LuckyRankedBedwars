@@ -1,10 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const { Events } = require('discord.js');
+const { getMatchLog } = require('../utils/matchLogger');
 require('dotenv').config();
 
 const strikePath = path.join(__dirname, '../../data/strikes.json');
-const matchLogPath = path.join(__dirname, '../../data/matchLogs.json');
 
 function loadStrikes() {
   try {
@@ -16,14 +16,6 @@ function loadStrikes() {
 
 function saveStrikes(data) {
   fs.writeFileSync(strikePath, JSON.stringify(data, null, 2));
-}
-
-function loadMatchLogs() {
-  try {
-    return JSON.parse(fs.readFileSync(matchLogPath, 'utf-8'));
-  } catch {
-    return {};
-  }
 }
 
 module.exports = {
@@ -46,15 +38,15 @@ module.exports = {
     }
 
     const strikes = loadStrikes();
-    const logs = loadMatchLogs();
+    const match = await getMatchLog(gameId);
     const strike = strikes?.[gameId]?.[strikedId];
 
-    if (!strike || !logs[gameId]) {
+    if (!strike || !match) {
       return await interaction.reply({ content: '❌ Strike data not found.', ephemeral: true });
     }
 
-    const team = strike.team;
-    const validVouchers = logs[gameId][team];
+    const team = strike.team; // 'team1' or 'team2'
+    const validVouchers = match[team] || (team === 'team1' ? match.winners : match.losers) || [];
 
     if (!validVouchers.includes(userId)) {
       return await interaction.reply({ content: '❌ You are not allowed to vouch for this strike.', ephemeral: true });

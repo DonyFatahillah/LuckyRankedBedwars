@@ -3,7 +3,7 @@ const queue1v1 = require('../queue/queue1v1');
 const queue2v2 = require('../queue/queue2v2');
 const queue3v3 = require('../queue/queue3v3');
 const queue4v4 = require('../queue/queue4v4');
-const { getActiveGames, deleteActiveGame } = require('../queue/queueManager');
+const { getActiveGames, deleteActiveGame, queueLocks } = require('../queue/queueManager');
 const Player = require('../models/Player');
 const eloQueues = require('../config/eloQueues');
 const { getPartyByUser } = require('../utils/partySystem');
@@ -28,7 +28,6 @@ const ALL_QUEUE_IDS = Object.entries(process.env)
   .filter(([key, value]) => key.includes('QUEUE') && value && /^\d{17,19}$/.test(value))
   .map(([, value]) => value);
 
-const queueLocks = new Map();
 const deletedCategories = new Set();
 const ONLINE_CHECK_TIMEOUT_MS = 5000;
 const ONLINE_CHECK_INTERVAL_MS = 250;

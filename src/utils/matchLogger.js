@@ -43,8 +43,36 @@ async function saveLogs(gameId) {
 }
 
 async function getMatchLog(gameId) {
+  // 1. Try Redis first
   const raw = await redis.get(`match:${gameId}`);
-  return raw ? JSON.parse(raw) : null;
+  if (raw) return JSON.parse(raw);
+
+  // 2. Fallback to MongoDB
+  try {
+    const log = await MatchLogModel.findOne({ matchId: gameId }).lean();
+    if (log) {
+      // Re-map Mongo fields to the format expected by the app if necessary
+      // Based on logMatch() structure: team1, team2, queueType, mapName, status, createdAt
+      const formattedLog = {
+        gameId: log.matchId,
+        team1: log.team1 || log.winners || [], // Use winners/losers if team1/team2 not explicitly stored
+        team2: log.team2 || log.losers || [],
+        queueType: log.queueType,
+        mapName: log.mapName,
+        status: log.status,
+        createdAt: new Date(log.timestamp).toISOString(),
+        ...log
+      };
+      
+      // Cache back to Redis
+      await redis.set(`match:${gameId}`, JSON.stringify(formattedLog));
+      return formattedLog;
+    }
+  } catch (err) {
+    console.error(`[MatchLogger] Mongo lookup failed for #${gameId}:`, err);
+  }
+
+  return null;
 }
 
 async function logMatch(gameId, team1, team2, options = {}) {

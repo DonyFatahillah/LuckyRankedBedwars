@@ -12,6 +12,7 @@ const RULES_YAML_PATH = path.join(__dirname, '../../data/queueRules.yaml');
 
 let _activeGames = new Map();
 let _queueRules = {};
+const queueLocks = new Map();
 
 try {
   const raw = fs.readFileSync(RULES_YAML_PATH, 'utf8');
@@ -551,6 +552,54 @@ async function loadActiveGames() {
 }
 
 
+async function startQueuePolling(client) {
+  const eloQueues = require('../config/eloQueues');
+  const guildId = process.env.GUILD_ID;
+  if (!guildId) return;
+
+  console.log('[QueuePolling] Started 1-second queue detection.');
+
+  setInterval(async () => {
+    try {
+      const guild = client.guilds.cache.get(guildId);
+      if (!guild) return;
+
+      const allChannels = guild.channels.cache;
+
+      await Promise.all(eloQueues.map(async (queue) => {
+        const { voiceChannelId, type } = queue;
+        if (!voiceChannelId || !type) return;
+
+        if (queueLocks.get(voiceChannelId)) return;
+
+        const voiceChannel = allChannels.get(voiceChannelId);
+        if (!voiceChannel || !voiceChannel.isVoiceBased()) return;
+
+        const members = [...voiceChannel.members.values()];
+        if (members.length === 0) return;
+
+        // Optional: Track join time for players (already handled by voiceStateUpdate usually)
+        // members.forEach(member => trackJoin(member.id));
+
+        const expectedCount = type === '3v3' ? 6 : type === '4v4' ? 8 : 2;
+        if (members.length < expectedCount) return;
+
+        try {
+          const handlerPath = `./queue${type}`;
+          const queueHandler = require(handlerPath);
+          if (typeof queueHandler.handleQueue === 'function') {
+            await queueHandler.handleQueue(guild, members, queue);
+          }
+        } catch (err) {
+          // Silent fail for polling errors to avoid log spam
+        }
+      }));
+    } catch (err) {
+      console.error('[QueuePolling] Error:', err);
+    }
+  }, 1000);
+}
+
 module.exports = {
   getActiveGames,
   createMatch,
@@ -559,5 +608,7 @@ module.exports = {
   deleteActiveGame,
   loadActiveGames,
   getEligiblePlayers,
-  checkAllQueueChannelsOnStartup
+  checkAllQueueChannelsOnStartup,
+  startQueuePolling,
+  queueLocks
 };

@@ -116,8 +116,8 @@ module.exports = {
       });
     }
 
-    const team1 = match.team1 || [];
-    const team2 = match.team2 || [];
+    const team1 = match.team1 || match.winners || [];
+    const team2 = match.team2 || match.losers || [];
 
     let team;
     if (team1.includes(targetUser.id)) team = 'team1';

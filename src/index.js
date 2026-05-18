@@ -18,7 +18,7 @@
   const connectDB = require('./config/database');
   const { setupResultListener } = require('./utils/redisClient');
 
-  let loadLogs, cleanMatchLogs, getActiveGames, loadActiveGames, deleteActiveGame, checkAllQueueChannelsOnStartup;
+  let loadLogs, cleanMatchLogs, getActiveGames, loadActiveGames, deleteActiveGame, checkAllQueueChannelsOnStartup, startQueuePolling;
 
   try {
     await connectDB();
@@ -30,7 +30,7 @@
     cleanMatchLogs = require('./scripts/cleanupMatchLogs');
 
     const queueManager = require('./queue/queueManager');
-    ({ getActiveGames, loadActiveGames, deleteActiveGame, checkAllQueueChannelsOnStartup } = queueManager);
+    ({ getActiveGames, loadActiveGames, deleteActiveGame, checkAllQueueChannelsOnStartup, startQueuePolling } = queueManager);
 
     console.log('[Startup] ✅ Successfully loaded all required modules');
 
@@ -145,6 +145,8 @@
       await maintenanceTask.execute(client);
 
       setupResultListener(client);
+
+      await startQueuePolling(client);
 
       await sendStatusEmbed('online');
     } catch (err) {
