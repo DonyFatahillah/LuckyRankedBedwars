@@ -78,20 +78,33 @@ async function saveParties(leaderId = null) {
 }
 
 async function removeFromAllParties(userId) {
+  const saveTasks = [];
+  
   for (const [leaderId, party] of parties.entries()) {
+    let modified = false;
+
     if (party.members.includes(userId)) {
       party.members = party.members.filter(id => id !== userId);
       if (party.leaderId === userId || party.members.length === 0) {
         parties.delete(leaderId);
-        await redis.del(`party:${leaderId}`);
-        await PartyModel.deleteOne({ leaderId }).catch(() => {});
+        saveTasks.push(redis.del(`party:${leaderId}`));
+        saveTasks.push(PartyModel.deleteOne({ leaderId }).catch(() => {}));
         continue;
       }
-      await saveParties(leaderId);
+      modified = true;
     }
-    party.invited = party.invited.filter(id => id !== userId);
-    await saveParties(leaderId);
+
+    if (party.invited.includes(userId)) {
+      party.invited = party.invited.filter(id => id !== userId);
+      modified = true;
+    }
+
+    if (modified) {
+      saveTasks.push(saveParties(leaderId));
+    }
   }
+
+  await Promise.all(saveTasks);
 }
 
 async function createParty(leaderId, maxMembers = DEFAULT_MAX_MEMBERS) {

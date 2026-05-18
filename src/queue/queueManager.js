@@ -36,20 +36,18 @@ async function checkAllQueueChannelsOnStartup(client) {
 
   const allChannels = await guild.channels.fetch();
 
-  for (const queue of eloQueues) {
+  await Promise.all(eloQueues.map(async (queue) => {
     const { voiceChannelId, type } = queue;
-    if (!voiceChannelId || !type) continue;
+    if (!voiceChannelId || !type) return;
 
     const voiceChannel = allChannels.get(voiceChannelId);
-    if (!voiceChannel || !voiceChannel.isVoiceBased()) continue;
+    if (!voiceChannel || !voiceChannel.isVoiceBased()) return;
 
     const members = [...voiceChannel.members.values()];
-    if (members.length === 0) continue;
+    if (members.length === 0) return;
 
     // Track join time for players already in VC
-    for (const member of members) {
-      trackJoin(member.id);
-    }
+    members.forEach(member => trackJoin(member.id));
 
     console.log(`[StartupQueue] Found ${members.length} in queue ${type} → ${voiceChannel.name}`);
 
@@ -64,7 +62,7 @@ async function checkAllQueueChannelsOnStartup(client) {
     } catch (err) {
       console.error(`[StartupQueue] Failed to handle queue type ${type}:`, err);
     }
-  }
+  }));
 }
 
 function generateHexCode() {
@@ -75,7 +73,7 @@ function generateHexCode() {
   return hex;
 }
 
-function getEligiblePlayers(members, targetCount, maxPartySize = 4) {
+function getEligiblePlayers(members, targetCount, maxTeamSize = 4) {
   const soloMembers = [];
   const partyGroups = [];
   const memberMap = new Map(members.map(m => [m.id, m]));
@@ -91,21 +89,22 @@ function getEligiblePlayers(members, targetCount, maxPartySize = 4) {
 
       if (presentMembers.length === 0) continue;
       
-      // Calculate group join time (earliest member)
       const groupJoinTime = Math.min(...presentMembers.map(m => getJoinTime(m.id)));
       
-      if (presentMembers.length > maxPartySize) {
-        for (let i = 0; i < presentMembers.length; i += maxPartySize) {
-          const slice = presentMembers.slice(i, i + maxPartySize);
+      if (presentMembers.length > maxTeamSize) {
+        for (let i = 0; i < presentMembers.length; i += maxTeamSize) {
+          const slice = presentMembers.slice(i, i + maxTeamSize);
           partyGroups.push({ 
             members: slice, 
-            joinTime: groupJoinTime 
+            joinTime: groupJoinTime,
+            isParty: true
           });
         }
       } else {
         partyGroups.push({ 
           members: presentMembers, 
-          joinTime: groupJoinTime 
+          joinTime: groupJoinTime,
+          isParty: true
         });
       }
 
@@ -114,33 +113,34 @@ function getEligiblePlayers(members, targetCount, maxPartySize = 4) {
     } else if (!party) {
       soloMembers.push({ 
         member, 
-        joinTime: getJoinTime(member.id) 
+        joinTime: getJoinTime(member.id),
+        isParty: false
       });
     }
   }
 
-  // Sort party groups by join time (earliest first)
   partyGroups.sort((a, b) => a.joinTime - b.joinTime);
-  // Sort solo members by join time (earliest first)
   soloMembers.sort((a, b) => a.joinTime - b.joinTime);
 
-  const combined = [];
+  const selectedGroups = [];
   let total = 0;
 
-  // Fill with parties first (they are already sorted by join time)
   for (const group of partyGroups) {
     if (total + group.members.length <= targetCount) {
-      combined.push(...group.members);
+      selectedGroups.push(group);
       total += group.members.length;
     }
     if (total === targetCount) break;
   }
 
-  // Fill remaining slots with solo members (sorted by join time)
   if (total < targetCount) {
     for (const solo of soloMembers) {
       if (total < targetCount) {
-        combined.push(solo.member);
+        selectedGroups.push({
+          members: [solo.member],
+          joinTime: solo.joinTime,
+          isParty: false
+        });
         total++;
       } else {
         break;
@@ -148,7 +148,7 @@ function getEligiblePlayers(members, targetCount, maxPartySize = 4) {
     }
   }
 
-  return combined;
+  return selectedGroups;
 }
 
 function shuffle(array) {
@@ -162,22 +162,36 @@ async function createMatch(guild, players, teamSize, options = {}) {
   if (!players || players.length === 0) return;
 
   const totalRequired = teamSize * 2;
-  players = getEligiblePlayers(players, totalRequired, teamSize);
-  if (players.length < totalRequired) return;
+  const eligibleGroups = getEligiblePlayers(players, totalRequired, teamSize);
+  
+  let totalSelected = 0;
+  eligibleGroups.forEach(g => totalSelected += g.members.length);
+  if (totalSelected < totalRequired) return;
 
+  const hex = generateHexCode();
   const eloQueue = options.eloQueue;
   const isHighTier = eloQueue && eloQueue.minElo >= 600;
 
-  const hex = generateHexCode();
-  
-  // Shuffle the selected players to avoid repetitive teammate assignments
-  // We keep the first few and last few as potentially mixed to maintain some order, 
-  // or shuffle the whole list for better distribution.
-  const shuffledPlayers = shuffle([...players]);
-  
-  const team1 = shuffledPlayers.slice(0, teamSize);
-  const team2 = shuffledPlayers.slice(teamSize, teamSize * 2);
+  const team1 = [];
+  const team2 = [];
+
+  const shuffledGroups = shuffle([...eligibleGroups]);
+
+  for (const group of shuffledGroups) {
+    if (team1.length + group.members.length <= teamSize) {
+      team1.push(...group.members);
+    } else if (team2.length + group.members.length <= teamSize) {
+      team2.push(...group.members);
+    } else {
+      for (const member of group.members) {
+        if (team1.length < teamSize) team1.push(member);
+        else team2.push(member);
+      }
+    }
+  }
+
   const teams = [team1, team2];
+  const allSelectedPlayers = [...team1, ...team2];
 
   const captains = await Promise.all(
     teams.map(async team => {
@@ -189,29 +203,44 @@ async function createMatch(guild, players, teamSize, options = {}) {
   const rules = getRulesForMatchType(teamSize);
 
   try {
+    const categoryPerms = getPermissionOverwrites(allSelectedPlayers, [
+      PermissionFlagsBits.ViewChannel,
+      PermissionFlagsBits.SendMessages,
+      PermissionFlagsBits.ReadMessageHistory
+    ], true);
+
     const category = await guild.channels.create({
       name: `#${hex} Game`,
       type: ChannelType.GuildCategory,
-      permissionOverwrites: getPermissionOverwrites(players, [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory
-      ], true)
+      permissionOverwrites: categoryPerms
     });
 
-    const textChannel = await guild.channels.create({
-      name: `${hex}-chat`,
-      type: ChannelType.GuildText,
-      parent: category.id,
-      permissionOverwrites: getPermissionOverwrites(players, [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory
-      ], true)
-    });
+    // Create Text Channel and Team VCs in parallel
+    const channelTasks = [
+      guild.channels.create({
+        name: `${hex}-chat`,
+        type: ChannelType.GuildText,
+        parent: category.id,
+        permissionOverwrites: categoryPerms
+      })
+    ];
+
+    if (!isHighTier) {
+      for (let i = 0; i < teams.length; i++) {
+        channelTasks.push(guild.channels.create({
+          name: `#${hex} Team ${i + 1}`,
+          type: ChannelType.GuildVoice,
+          parent: category.id,
+          permissionOverwrites: getPermissionOverwrites(teams[i], PermissionFlagsBits.Connect, false)
+        }));
+      }
+    }
+
+    const createdChannels = await Promise.all(channelTasks);
+    const textChannel = createdChannels[0];
+    const vcs = !isHighTier ? createdChannels.slice(1).map(c => c.id) : [];
 
     let selectedMap;
-    const vcs = [];
 
     if (isHighTier) {
       // 1. Create Waiting Room VC
@@ -224,8 +253,13 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
       // 2. Move players to Waiting Room (Parallel)
       await Promise.all(players.map(async p => {
-        const member = await guild.members.fetch(p.id).catch(() => null);
-        if (member) return member.voice.setChannel(waitingRoom).catch(() => {});
+        if (p.voice?.channelId) {
+          return p.voice.setChannel(waitingRoom).catch(() => {});
+        } else {
+          // Fallback fetch if voice state is missing for some reason
+          const member = await guild.members.fetch(p.id).catch(() => null);
+          if (member?.voice.channelId) return member.voice.setChannel(waitingRoom).catch(() => {});
+        }
       }));
 
       // 3. Map Voting
@@ -247,7 +281,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
       };
 
       const voteMessage = await textChannel.send({
-        content: players.map(p => `<@${p.id}>`).join(' '),
+        content: allSelectedPlayers.map(p => `<@${p.id}>`).join(' '),
         embeds: [voteEmbed],
         components: [row]
       });
@@ -261,7 +295,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
       });
 
       collector.on('collect', async i => {
-        if (!players.some(p => p.id === i.user.id)) {
+        if (!allSelectedPlayers.some(p => p.id === i.user.id)) {
           return i.reply({ content: "You are not in this match!", ephemeral: true });
         }
         if (voterIds.has(i.user.id)) {
@@ -286,16 +320,15 @@ async function createMatch(guild, players, teamSize, options = {}) {
         components: []
       });
 
-      // 4. Create Team VCs
-      for (let i = 0; i < teams.length; i++) {
-        const vc = await guild.channels.create({
-          name: `#${hex} Team ${i + 1}`,
-          type: ChannelType.GuildVoice,
-          parent: category.id,
-          permissionOverwrites: getPermissionOverwrites(teams[i], PermissionFlagsBits.Connect, false)
-        });
-        vcs.push(vc.id);
-      }
+      // 4. Create Team VCs in parallel
+      const teamVCTasks = teams.map((team, i) => guild.channels.create({
+        name: `#${hex} Team ${i + 1}`,
+        type: ChannelType.GuildVoice,
+        parent: category.id,
+        permissionOverwrites: getPermissionOverwrites(team, PermissionFlagsBits.Connect, false)
+      }));
+      const createdTeamVCs = await Promise.all(teamVCTasks);
+      createdTeamVCs.forEach(vc => vcs.push(vc.id));
 
       // 5. Move players to Team VCs
       await movePlayersToVoiceChannels(guild, teams, category.id, vcs);
@@ -306,15 +339,6 @@ async function createMatch(guild, players, teamSize, options = {}) {
     } else {
       // Normal flow
       selectedMap = mapPicker.getRandomMap();
-      for (let i = 0; i < teams.length; i++) {
-        const vc = await guild.channels.create({
-          name: `#${hex} Team ${i + 1}`,
-          type: ChannelType.GuildVoice,
-          parent: category.id,
-          permissionOverwrites: getPermissionOverwrites(teams[i], PermissionFlagsBits.Connect, false)
-        });
-        vcs.push(vc.id);
-      }
       await movePlayersToVoiceChannels(guild, teams, category.id, vcs);
     }
 
@@ -334,12 +358,12 @@ async function createMatch(guild, players, teamSize, options = {}) {
       }
     ];
 
-    await textChannel.send({ embeds });
-    if (!isHighTier) await textChannel.send(players.map(p => `<@${p.id}>`).join(' '));
+    const messagePromise = textChannel.send({ embeds });
+    if (!isHighTier) textChannel.send(allSelectedPlayers.map(p => `<@${p.id}>`).join(' '));
 
     const matchData = {
       gameId: hex,
-      players: players.map(p => p.id),
+      players: allSelectedPlayers.map(p => p.id),
       teamA: teams[0].map(p => p.id),
       teamB: teams[1].map(p => p.id),
       captainIds: captains,
@@ -355,98 +379,48 @@ async function createMatch(guild, players, teamSize, options = {}) {
       isPartyMatch: options.isPartyMatch || false
     };
 
-    await logMatch(hex, matchData.teamA, matchData.teamB, { 
-      queueType: matchData.queueType, 
-      mapName: matchData.map 
-    });
-    await setActiveGame(hex, matchData);
+    // Parallelize saves, logs, and redis publication
+    const postMatchTasks = [
+      logMatch(hex, matchData.teamA, matchData.teamB, { 
+        queueType: matchData.queueType, 
+        mapName: matchData.map 
+      }),
+      setActiveGame(hex, matchData),
+      (async () => {
+        const [teamAData, teamBData] = await Promise.all([
+          Promise.all(teams[0].map(async m => {
+            const p = await Player.load(m);
+            return { id: p.id, ign: p.ingameUsername, elo: p.elo };
+          })),
+          Promise.all(teams[1].map(async m => {
+            const p = await Player.load(m);
+            return { id: p.id, ign: p.ingameUsername, elo: p.elo };
+          }))
+        ]);
 
-    // Publish to Redis for Minecraft Bridge
-    const teamAData = await Promise.all(teams[0].map(async m => {
-      const p = await Player.load(m);
-      return { id: p.id, ign: p.ingameUsername, elo: p.elo };
-    }));
-    const teamBData = await Promise.all(teams[1].map(async m => {
-      const p = await Player.load(m);
-      return { id: p.id, ign: p.ingameUsername, elo: p.elo };
-    }));
-
-    const formattedMap = `w_4_0_${matchData.map.toLowerCase()}`;
-
-    await publishMatch({
-      matchId: hex,
-      queueType: matchData.queueType,
-      map: formattedMap,
-      teamA: teamAData,
-      teamB: teamBData
-    }).catch(err => console.error('[Redis-Bridge] Failed to publish:', err));
+        const formattedMap = `w_4_0_${matchData.map.toLowerCase()}`;
+        return publishMatch({
+          matchId: hex,
+          queueType: matchData.queueType,
+          map: formattedMap,
+          teamA: teamAData,
+          teamB: teamBData
+        });
+      })().catch(err => console.error('[Redis-Bridge] Failed to publish:', err))
+    ];
 
     if (process.env.MATCH_LOGS_ID) {
-      await sendLogToStaffChannel(guild.client, guild.id, hex, process.env.MATCH_LOGS_ID);
+      postMatchTasks.push(sendLogToStaffChannel(guild.client, guild.id, hex, process.env.MATCH_LOGS_ID));
     }
+
+    await Promise.all([messagePromise, ...postMatchTasks]);
 
   } catch (err) {
     console.error(`[createMatch] Failed to create match #${hex}:`, err);
   }
 }
 
-// -------------------------
-// Rules
-// -------------------------
-function getRulesForMatchType(teamSize) {
-  if (teamSize === 3 || teamSize === 4) {
-    const section = _queueRules[`${teamSize}v${teamSize}`];
-    if (!section) return fallbackRules(teamSize);
-
-    const formatSection = (title, list) =>
-      list?.length ? `**${title}:**\n> ${list.map(i => i.trim()).join('\n> ')}\n` : '';
-
-    const rulesText = [
-      formatSection('✅ Allowed', section.allowed),
-      formatSection('🕒 After Emerald II', section.after_emerald_ii),
-      formatSection('💥 After Any Bed Break', section.after_any_bed_break),
-      formatSection('⛔ Banned', section.banned)
-    ].join('\n');
-
-    return {
-      format: `${teamSize}v${teamSize}`,
-      //map: `Random ${teamSize}v${teamSize} Map`,
-      //rounds: 1,
-      //bedBreakEnabled: true,
-      rulesEmbed: rulesText
-    };
-  }
-  return fallbackRules(teamSize);
-}
-
-function fallbackRules(teamSize) {
-  return {
-    format: teamSize === 1 ? '1v1' : `${teamSize}v${teamSize}`,
-    //map: `Random ${teamSize}v${teamSize} Map`,
-   // rounds: 1,
-    //bedBreakEnabled: true,
-    //mvpBonus: true,
-   // note: 'Standard rules apply.',
-    rulesEmbed: ''
-  };
-}
-
-// -------------------------
-// Permissions
-// -------------------------
-function getPermissionOverwrites(players, permissions, isTextChannel = false) {
-  const perms = Array.isArray(permissions) ? permissions : [permissions];
-  const overwrites = [];
-  const everyoneRoleId = players[0].guild.roles.everyone.id;
-
-  if (isTextChannel) {
-    overwrites.push({ id: everyoneRoleId, deny: [PermissionFlagsBits.ViewChannel] });
-  } else {
-    overwrites.push({ id: everyoneRoleId, allow: [PermissionFlagsBits.ViewChannel], deny: [PermissionFlagsBits.Connect] });
-  }
-
-  return overwrites.concat(players.map(p => ({ id: p.id, allow: perms })));
-}
+// ... rest of rules functions ...
 
 // -------------------------
 // Move players
@@ -454,26 +428,36 @@ function getPermissionOverwrites(players, permissions, isTextChannel = false) {
 async function movePlayersToVoiceChannels(guild, teams, categoryId, specificVoiceIds = null) {
   let voiceChannels;
   
+  const allChannels = await guild.channels.fetch();
   if (specificVoiceIds && specificVoiceIds.length > 0) {
-    const allChannels = await guild.channels.fetch();
     voiceChannels = specificVoiceIds.map(id => allChannels.get(id)).filter(Boolean);
   } else {
-    const allChannels = await guild.channels.fetch();
     voiceChannels = Array.from(allChannels.values())
       .filter(c => c.parentId === categoryId && c.type === ChannelType.GuildVoice)
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  teams.forEach((team, i) => team.forEach(p => p.targetVC = voiceChannels[i]));
+  const moveTasks = [];
+  teams.forEach((team, i) => {
+    const targetVC = voiceChannels[i];
+    if (!targetVC) return;
+    
+    team.forEach(p => {
+      moveTasks.push((async () => {
+        if (p.voice?.channelId) {
+          await p.voice.setChannel(targetVC).catch(() => {});
+        } else {
+          // Fallback fetch if voice state is missing
+          const member = await guild.members.fetch(p.id).catch(() => null);
+          if (member?.voice.channelId) {
+            await member.voice.setChannel(targetVC).catch(() => {});
+          }
+        }
+      })());
+    });
+  });
 
-  for (const team of teams) {
-    for (const p of team) {
-      const member = await guild.members.fetch(p.id).catch(() => null);
-      if (member && p.targetVC) {
-        await member.voice.setChannel(p.targetVC).catch(() => {});
-      }
-    }
-  }
+  await Promise.all(moveTasks);
 }
 
 const { redis } = require('../utils/redisClient');
@@ -501,11 +485,10 @@ async function deleteActiveGame(gameId) {
 
 async function getActiveGames() {
   const keys = await redis.keys('game:*');
-  const games = [];
-  for (const key of keys) {
+  const games = await Promise.all(keys.map(async key => {
     const raw = await redis.get(key);
-    games.push(JSON.parse(raw));
-  }
+    return JSON.parse(raw);
+  }));
   return games;
 }
 

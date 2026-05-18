@@ -249,21 +249,23 @@ client.on('interactionCreate', async (interaction) => {
 
   async function cleanStaleGameChannels(client) {
     const guild = client.guilds.cache.first();
+    if (!guild) return;
     const allChannels = await guild.channels.fetch();
-    const activeGames = getActiveGames();
+    const activeGames = await getActiveGames();
 
-    for (const [gameId, match] of activeGames.entries()) {
+    await Promise.all(activeGames.map(async (match) => {
+      const gameId = match.gameId;
       const category = await guild.channels.fetch(match.categoryId).catch(() => null);
-      if (!category) continue;
+      if (!category) return;
 
       const children = category.children?.cache ?? allChannels.filter((c) => c.parentId === category.id);
       const isEmpty = [...children.values()].every((c) => c.isVoiceBased() && c.members.size === 0);
 
       if (isEmpty) {
-        for (const [, channel] of children) await channel.delete().catch(console.error);
+        await Promise.all([...children.values()].map(c => c.delete().catch(console.error)));
         await category.delete().catch(console.error);
-        deleteActiveGame(gameId);
+        await deleteActiveGame(gameId);
       }
-    }
+    }));
   }
 })();

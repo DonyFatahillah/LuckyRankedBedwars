@@ -33,29 +33,29 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   const scoringChannel = await guild.channels.fetch(SCORING_CHANNEL_ID).catch(() => null);
   const allPlayerIds = [...teams[0], ...teams[1]];
   
-  // Fetch members
+  // Fetch members in parallel
   const memberMap = new Map();
-  for (const id of allPlayerIds) {
+  await Promise.all(allPlayerIds.map(async id => {
     const member = await guild.members.fetch(id).catch(() => null);
     if (member) memberMap.set(id, member);
-  }
+  }));
 
   // --- Determine winner from bedbreaker if needed ---
   let winnerTeam = winner;
   if (!winnerTeam && winBedbreaker) {
     let bedbreakerPlayerId = null;
-    for (const id of allPlayerIds) {
+    
+    // We need to check players' usernames, which requires loading them.
+    // Let's do this in parallel too.
+    const players = await Promise.all(allPlayerIds.map(async id => {
       const m = memberMap.get(id);
-      if (!m) continue;
-      const player = await Player.load(m);
-      if (player.username.toLowerCase() === winBedbreaker.toLowerCase()) {
-        bedbreakerPlayerId = id;
-        break;
-      }
-    }
+      if (!m) return null;
+      return { id, player: await Player.load(m) };
+    }));
 
-    if (bedbreakerPlayerId) {
-      winnerTeam = teams[0].includes(bedbreakerPlayerId) ? 'team1' : 'team2';
+    const found = players.find(p => p?.player.username.toLowerCase() === winBedbreaker.toLowerCase());
+    if (found) {
+      winnerTeam = teams[0].includes(found.id) ? 'team1' : 'team2';
     } else {
       console.warn(`[AutoConfirm] WinBedbreaker ${winBedbreaker} not found in either team for ${gameId}`);
       winnerTeam = 'team1'; // fallback
@@ -65,15 +65,15 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   const winners = winnerTeam === 'team1' ? teams[0] : teams[1];
   const losers = winnerTeam === 'team1' ? teams[1] : teams[0];
 
-  // --- ELO and stat updates ---
+  // --- ELO and stat updates (Parallel) ---
   const results = [];
   let mvpUsername = topKiller;
   let winBedUsername = winBedbreaker;
   let loseBedUsername = loseBedbreaker;
 
-  for (const id of allPlayerIds) {
+  await Promise.all(allPlayerIds.map(async id => {
     const member = memberMap.get(id);
-    if (!member) continue;
+    if (!member) return;
 
     try {
       const player = await Player.load(member);
@@ -111,7 +111,7 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
     } catch (err) {
       console.error(`[autoConfirmMatch] Error processing ${id}: ${err.stack}`);
     }
-  }
+  }));
 
   // --- Scoring summary embed ---
   if (scoringChannel) {
@@ -153,7 +153,7 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
     }
   }
 
-  // --- Cleanup match channels ---
+  // --- Cleanup match channels (Parallel) ---
   try {
     const category = await guild.channels.fetch(match.categoryId).catch(() => null);
     if (category) {
@@ -162,18 +162,19 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
 
       const children = category.children.cache;
       
-      // Move any players left in voice channels to waiting room
+      // Move any players left in voice channels to waiting room in parallel
       const voiceChannels = children.filter(c => c.type === 2); // 2 is GuildVoice
-      for (const [, vc] of voiceChannels) {
+      await Promise.all(voiceChannels.map(async vc => {
         if (waitingRoom) {
           await Promise.all(vc.members.map(m => m.voice.setChannel(waitingRoom).catch(() => {})));
         }
-      }
+      }));
 
       // Small delay to ensure moves are processed before deletion
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      for (const [, ch] of children) await ch.delete().catch(() => {});
+      // Delete channels and category in parallel
+      await Promise.all(children.map(ch => ch.delete().catch(() => {})));
       await category.delete().catch(() => {});
     }
   } catch (err) {
@@ -199,13 +200,12 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   };
   if (loseBedUsername) logUpdateOptions.loseBedbreaker = loseBedUsername;
 
-  for (const channelId of [STAFF_CHANNEL_ID, MATCH_LOGS_ID, VERIFY_MATCH_CHANNEL_ID]) {
-    try {
-      await editLogEmbed(client, guild.id, gameId, channelId, 'confirmed', logUpdateOptions);
-    } catch (err) {
-      console.warn(`[autoConfirmMatch] Failed to edit embed in ${channelId}: ${err.message}`);
-    }
-  }
+  // Edit log embeds in parallel
+  const logChannels = [STAFF_CHANNEL_ID, MATCH_LOGS_ID, VERIFY_MATCH_CHANNEL_ID];
+  await Promise.all(logChannels.map(channelId => 
+    editLogEmbed(client, guild.id, gameId, channelId, 'confirmed', logUpdateOptions)
+      .catch(err => console.warn(`[autoConfirmMatch] Failed to edit embed in ${channelId}: ${err.message}`))
+  ));
 
   // --- Update legacy match message text (if any) ---
   if (logEntry?.messageId) {

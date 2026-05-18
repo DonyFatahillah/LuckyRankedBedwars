@@ -118,9 +118,8 @@ async function handleEloQueue(newState, eloQueue, party = null) {
       ? party.members.map(id => newState.guild.members.cache.get(id)).filter(Boolean)
       : [...members.values()];
 
-    // Filter banned and ELO-ineligible players
-    const validated = [];
-    for (const member of players) {
+    // Filter banned and ELO-ineligible players (Parallel)
+    const validationResults = await Promise.all(players.map(async member => {
       // 🚫 Banned players → move to waiting room
       if (member.roles.cache.has(RANKED_BANNED_ROLE_ID)) {
         await moveToWaitingRoom(
@@ -128,7 +127,7 @@ async function handleEloQueue(newState, eloQueue, party = null) {
           '🚫 You are ranked banned and cannot queue.'
         );
         console.log(`[BanCheck] Moved banned player ${member.displayName} to waiting room`);
-        continue;
+        return null;
       }
 
       if (member.roles.cache.has(BLACKLISTED_ROLE_ID)) {
@@ -137,7 +136,7 @@ async function handleEloQueue(newState, eloQueue, party = null) {
           '🚫 You are blacklisted from joining queue channels.'
         );
         console.log(`[BlacklistCheck] Moved blacklisted player ${member.displayName} to waiting room from ${vcId}`);
-        continue;
+        return null;
       }
 
       // ⚠️ ELO range validation
@@ -147,11 +146,13 @@ async function handleEloQueue(newState, eloQueue, party = null) {
           member,
           `❌ You must be between ${eloQueue.minElo}-${eloQueue.maxElo} ELO for ${eloQueue.type} queue.`
         );
-        continue;
+        return null;
       }
 
-      validated.push(member);
-    }
+      return member;
+    }));
+
+    const validated = validationResults.filter(Boolean);
 
     const expectedCount =
       eloQueue.type === '3v3' ? 6 :
@@ -188,17 +189,20 @@ async function handleStandardQueue(newState, party = null) {
     ? party.members.map(id => newState.guild.members.cache.get(id)).filter(Boolean)
     : [...newState.channel.members.values()];
 
-  // 🚫 Banned players → move to waiting room
-  for (const member of members) {
+  // 🚫 Banned players → move to waiting room (Parallel check)
+  const bannedChecks = await Promise.all(members.map(async member => {
     if (member.roles.cache.has(RANKED_BANNED_ROLE_ID)) {
       await moveToWaitingRoom(
         member,
         '🚫 You are ranked banned and cannot queue.'
       );
       console.log(`[BanCheck] Moved banned player ${member.displayName} to waiting room`);
-      return;
+      return true;
     }
-  }
+    return false;
+  }));
+
+  if (bannedChecks.some(b => b)) return;
 
   if (members.length < queue.expectedCount) return;
 

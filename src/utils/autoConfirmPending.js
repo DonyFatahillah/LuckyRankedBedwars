@@ -5,16 +5,19 @@ const Player = require('../models/Player');
 
 module.exports = async function autoConfirmPendingMatches(client) {
   const guild = await client.guilds.fetch(process.env.GUILD_ID);
-  const activeGames = getActiveGames();
+  const activeGamesArray = await getActiveGames();
+  const activeGames = new Map(activeGamesArray.map(g => [g.gameId, g]));
   const logs = getLogs();
 
-  let confirmedCount = 0;
-
-  for (const [gameId, log] of Object.entries(logs)) {
-    if (!log.submitted || log.status !== 'pending' || !activeGames.has(gameId)) continue;
+  const confirmTasks = Object.entries(logs).map(async ([gameId, log]) => {
+    if (!log.submitted || log.status !== 'pending' || !activeGames.has(gameId)) return;
 
     const match = activeGames.get(gameId);
-    const allPlayerIds = [...match.teams[0], ...match.teams[1]];
+    // Standardize team data access
+    const teams = [match.teamA || match.teams?.[0], match.teamB || match.teams?.[1]];
+    if (!teams[0] || !teams[1]) return;
+
+    const allPlayerIds = [...teams[0], ...teams[1]];
 
     const members = await Promise.all(
       allPlayerIds.map(async id => {
@@ -26,11 +29,11 @@ module.exports = async function autoConfirmPendingMatches(client) {
       })
     );
 
-    const memberMap = new Map(); // Map of memberId → Player
-    for (const member of members.filter(Boolean)) {
+    const memberMap = new Map(); // Map of memberId → { member, player }
+    await Promise.all(members.filter(Boolean).map(async member => {
       const player = await Player.load(member);
       memberMap.set(member.id, { member, player });
-    }
+    }));
 
     // Helper function: get player by mention or username
     const findPlayerByIdentifier = (identifier) => {
@@ -49,16 +52,16 @@ module.exports = async function autoConfirmPendingMatches(client) {
     const winMemberEntry = findPlayerByIdentifier(log.winBedbreaker);
     if (!winMemberEntry) {
       console.warn(`[AutoConfirm] WinBedbreaker ${log.winBedbreaker} not found in guild for ${gameId}`);
-      continue;
+      return;
     }
 
     const winMember = winMemberEntry.member;
     let winner;
-    if (match.teams[0].includes(winMember.id)) winner = 'team1';
-    else if (match.teams[1].includes(winMember.id)) winner = 'team2';
+    if (teams[0].includes(winMember.id)) winner = 'team1';
+    else if (teams[1].includes(winMember.id)) winner = 'team2';
     else {
       console.warn(`[AutoConfirm] WinBedbreaker ${log.winBedbreaker} not in any team for ${gameId}`);
-      continue;
+      return;
     }
 
     // Resolve topKiller
@@ -81,8 +84,11 @@ module.exports = async function autoConfirmPendingMatches(client) {
       topKiller: topKillerName
     });
 
-    confirmedCount++;
-  }
+    return true;
+  });
+
+  const results = await Promise.all(confirmTasks);
+  const confirmedCount = results.filter(Boolean).length;
 
   console.log(`[AutoConfirm] ✅ Auto-confirmed ${confirmedCount} pending matches`);
 };
