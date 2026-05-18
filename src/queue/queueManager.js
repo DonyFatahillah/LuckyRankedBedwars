@@ -459,6 +459,23 @@ function fallbackRules(teamSize) {
 }
 
 // -------------------------
+// Permissions
+// -------------------------
+function getPermissionOverwrites(players, permissions, isTextChannel = false) {
+  const perms = Array.isArray(permissions) ? permissions : [permissions];
+  const overwrites = [];
+  const everyoneRoleId = players[0].guild.roles.everyone.id;
+
+  if (isTextChannel) {
+    overwrites.push({ id: everyoneRoleId, deny: [PermissionFlagsBits.ViewChannel] });
+  } else {
+    overwrites.push({ id: everyoneRoleId, allow: [PermissionFlagsBits.ViewChannel], deny: [PermissionFlagsBits.Connect] });
+  }
+
+  return overwrites.concat(players.map(p => ({ id: p.id, allow: perms })));
+}
+
+// -------------------------
 // Move players
 // -------------------------
 async function movePlayersToVoiceChannels(guild, teams, categoryId, specificVoiceIds = null) {
