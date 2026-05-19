@@ -160,12 +160,16 @@ async function handleEloQueue(newState, eloQueue, party = null) {
 
     if (validated.length < expectedCount) {
       console.log(`[Validate Queue] Not enough eligible players: ${validated.length}/${expectedCount}`);
+      queueLocks.delete(vcId);
       return;
     }
 
     await requestOnlineChecks(validated);
     const allOnline = await waitForOnlineChecks(validated, 'Validate Queue');
-    if (!allOnline) return;
+    if (!allOnline) {
+      queueLocks.delete(vcId);
+      return;
+    }
 
     console.log(`[Validate Queue] Starting ${eloQueue.type} match with ${validated.length} players.`);
     const queueModule = require(`../queue/queue${eloQueue.type}`);
@@ -173,8 +177,9 @@ async function handleEloQueue(newState, eloQueue, party = null) {
 
   } catch (err) {
     console.error(`[ELO Queue Error]`, err);
+    queueLocks.delete(vcId);
   } finally {
-    setTimeout(() => queueLocks.set(vcId, false), 5000);
+    setTimeout(() => queueLocks.delete(vcId), 10000);
   }
 }
 
@@ -187,6 +192,8 @@ async function handleStandardQueue(newState, party = null) {
   const members = party
     ? party.members.map(id => newState.guild.members.cache.get(id)).filter(Boolean)
     : [...newState.channel.members.values()];
+
+  if (members.length < queue.expectedCount) return;
 
   // 🚫 Banned players → move to waiting room (Parallel check)
   const bannedChecks = await Promise.all(members.map(async member => {
@@ -203,14 +210,15 @@ async function handleStandardQueue(newState, party = null) {
 
   if (bannedChecks.some(b => b)) return;
 
-  if (members.length < queue.expectedCount) return;
+  queueLocks.set(vcId, true);
 
   try {
-    queueLocks.set(vcId, true);
-
     await requestOnlineChecks(members);
     const allOnline = await waitForOnlineChecks(members, 'Queue');
-    if (!allOnline) return;
+    if (!allOnline) {
+      queueLocks.delete(vcId);
+      return;
+    }
 
     console.log(`[Queue] Triggered ${queue.expectedCount}v${queue.expectedCount} queue with ${members.length} members.`);
 
@@ -219,8 +227,9 @@ async function handleStandardQueue(newState, party = null) {
     await queue.handleQueue(newState.guild, members, config);
   } catch (err) {
     console.error(`[Queue Error] Failed in VC ${vcId}:`, err);
+    queueLocks.delete(vcId);
   } finally {
-    setTimeout(() => queueLocks.set(vcId, false), 3000);
+    setTimeout(() => queueLocks.delete(vcId), 10000);
   }
 }
 

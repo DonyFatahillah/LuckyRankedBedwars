@@ -13,6 +13,7 @@ const RULES_YAML_PATH = path.join(__dirname, '../../data/queueRules.yaml');
 let _activeGames = new Map();
 let _queueRules = {};
 const queueLocks = new Map();
+const playerLocks = new Set();
 
 try {
   const raw = fs.readFileSync(RULES_YAML_PATH, 'utf8');
@@ -178,6 +179,16 @@ async function createMatch(guild, players, teamSize, options = {}) {
   let totalSelected = 0;
   eligibleGroups.forEach(g => totalSelected += g.members.length);
   if (totalSelected < totalRequired) return;
+
+  // --- Double-Trigger Safeguard ---
+  const allCandidateIds = eligibleGroups.flatMap(g => g.members.map(m => m.id));
+  if (allCandidateIds.some(id => playerLocks.has(id))) {
+    console.warn(`[createMatch] Skipping match creation: One or more players are already being processed.`);
+    return;
+  }
+  
+  // Lock all players
+  allCandidateIds.forEach(id => playerLocks.add(id));
 
   const hex = generateHexCode();
   const eloQueue = options.eloQueue;
@@ -429,6 +440,11 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
   } catch (err) {
     console.error(`[createMatch] Failed to create match #${hex}:`, err);
+  } finally {
+    // Release player locks after a short delay to allow movement to complete
+    eligibleGroups.flatMap(g => g.members.map(m => m.id)).forEach(id => {
+      setTimeout(() => playerLocks.delete(id), 15000);
+    });
   }
 }
 
@@ -578,10 +594,12 @@ async function startQueuePolling(client) {
           const handlerPath = `./queue${type}`;
           const queueHandler = require(handlerPath);
           if (typeof queueHandler.handleQueue === 'function') {
+            queueLocks.set(voiceChannelId, true);
             await queueHandler.handleQueue(guild, members, queue);
+            setTimeout(() => queueLocks.delete(voiceChannelId), 10000);
           }
         } catch (err) {
-          // Silent fail for polling errors to avoid log spam
+          queueLocks.delete(voiceChannelId);
         }
       }));
     } catch (err) {
