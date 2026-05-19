@@ -88,7 +88,12 @@ function getEligibleGroups(members, targetCount, maxTeamSize = 4) {
         .map(id => memberMap.get(id))
         .filter(Boolean);
 
-      if (presentMembers.length === 0) continue;
+      // 🚨 CRITICAL: Check if ALL party members are present in the queue voice channel
+      if (presentMembers.length < party.members.length) {
+        console.log(`[QueueSelection] Skipping party led by ${party.leaderId} - Only ${presentMembers.length}/${party.members.length} members present.`);
+        processedParties.add(party.leaderId);
+        continue;
+      }
       
       const groupJoinTime = Math.min(...presentMembers.map(m => getJoinTime(m.id)));
       
@@ -104,8 +109,8 @@ function getEligibleGroups(members, targetCount, maxTeamSize = 4) {
       } else {
         partyGroups.push({ 
           members: presentMembers, 
-          joinTime: groupJoinTime,
-          isParty: true
+          joinTime: groupJoinTime, 
+          isParty: true 
         });
       }
 
