@@ -341,8 +341,8 @@ async function createMatch(guild, players, teamSize, options = {}) {
       const createdTeamVCs = await Promise.all(teamVCTasks);
       createdTeamVCs.forEach(vc => vcs.push(vc.id));
 
-      // 5. Move players to Team VCs
-      await movePlayersToVoiceChannels(guild, teams, category.id, vcs);
+      // 5. Move players to Team VCs (Simultaneous)
+      await movePlayersToVoiceChannels(guild, teams, createdTeamVCs);
       
       // 6. Delete Waiting Room
       await waitingRoom.delete().catch(() => {});
@@ -350,7 +350,8 @@ async function createMatch(guild, players, teamSize, options = {}) {
     } else {
       // Normal flow
       selectedMap = mapPicker.getRandomMap();
-      await movePlayersToVoiceChannels(guild, teams, category.id, vcs);
+      const teamVCs = createdChannels.slice(1);
+      await movePlayersToVoiceChannels(guild, teams, teamVCs);
     }
 
     const teamMentions = teams.map(team => team.map(m => `<@${m.id}>`));
@@ -484,38 +485,22 @@ function getPermissionOverwrites(players, permissions, isTextChannel = false) {
 // -------------------------
 // Move players
 // -------------------------
-async function movePlayersToVoiceChannels(guild, teams, categoryId, specificVoiceIds = null) {
-  let voiceChannels;
-  
-  const allChannels = await guild.channels.fetch();
-  if (specificVoiceIds && specificVoiceIds.length > 0) {
-    voiceChannels = specificVoiceIds.map(id => allChannels.get(id)).filter(Boolean);
-  } else {
-    voiceChannels = Array.from(allChannels.values())
-      .filter(c => c.parentId === categoryId && c.type === ChannelType.GuildVoice)
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }
-
+async function movePlayersToVoiceChannels(guild, teams, voiceChannels) {
   const moveTasks = [];
+
   teams.forEach((team, i) => {
     const targetVC = voiceChannels[i];
     if (!targetVC) return;
     
     team.forEach(p => {
-      moveTasks.push((async () => {
-        if (p.voice?.channelId) {
-          await p.voice.setChannel(targetVC).catch(() => {});
-        } else {
-          // Fallback fetch if voice state is missing
-          const member = await guild.members.fetch(p.id).catch(() => null);
-          if (member?.voice.channelId) {
-            await member.voice.setChannel(targetVC).catch(() => {});
-          }
-        }
-      })());
+      // p is already a GuildMember object with voice state from the selection phase
+      if (p.voice?.channelId) {
+        moveTasks.push(p.voice.setChannel(targetVC).catch(() => {}));
+      }
     });
   });
 
+  // This executes ALL move requests at the exact same moment
   await Promise.all(moveTasks);
 }
 
