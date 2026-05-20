@@ -16,6 +16,11 @@ class ActiveGame {
     this.startedAt = data.startedAt || Date.now();
     this.submitted = data.submitted || false;
     this.submittingTeam = data.submittingTeam || null;
+    this.pickingPhase = data.pickingPhase || false;
+    this.pickingTurn = data.pickingTurn || null;
+    this.unpickedPlayers = data.unpickedPlayers || [];
+    this.captainIds = data.captainIds || [];
+    this.textChannelId = data.textChannelId || data.channelId;
   }
 
   static async load(gameId) {

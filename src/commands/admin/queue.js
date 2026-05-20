@@ -4,12 +4,11 @@ require('dotenv').config();
 
 const queueVoiceChannels = [
   process.env.QUEUE_ALL_RANK_4V4_ID,
-  process.env.QUEUE_0_300_3V3_ELO_VOICE_ID,
-  process.env.QUEUE_0_300_4V4_ELO_VOICE_ID,
-  process.env.QUEUE_300_600_3V3_ELO_VOICE_ID,
-  process.env.QUEUE_300_600_4V4_ELO_VOICE_ID,
+  process.env.QUEUE_0_600_3V3_ELO_VOICE_ID,
+  process.env.QUEUE_0_600_4V4_ELO_VOICE_ID,
   process.env.QUEUE_600_PLUS_3V3_ELO_VOICE_ID,
-  process.env.QUEUE_600_PLUS_4V4_ELO_VOICE_ID
+  process.env.QUEUE_600_PLUS_4V4_ELO_VOICE_ID,
+  process.env.QUEUE_PREMIUM_VOICE_ID
 ];
 
 module.exports = {

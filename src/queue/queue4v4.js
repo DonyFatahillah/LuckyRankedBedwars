@@ -16,7 +16,7 @@ module.exports = {
       if (!members || members.length === 0) return;
 
       // Flatten parties + remove duplicates
-      let eligiblePlayers = queueManager.getEligiblePlayers(members, this.expectedCount);
+      let eligiblePlayers = await queueManager.getEligiblePlayers(members, this.expectedCount);
 
       console.log(`[Queue4v4] Eligible players: ${eligiblePlayers.length}/${this.expectedCount}`);
 

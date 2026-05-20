@@ -13,7 +13,10 @@ const activeGameSchema = new mongoose.Schema({
   voiceBId: { type: String },
   startedAt: { type: Number, required: true },
   submitted: { type: Boolean, default: false },
-  submittingTeam: { type: String, default: null } // 'A' or 'B'
+  submittingTeam: { type: String, default: null }, // 'A' or 'B'
+  pickingPhase: { type: Boolean, default: false },
+  pickingTurn: { type: String, default: null }, // userId of the captain whose turn it is
+  unpickedPlayers: { type: [String], default: [] } // userIds of players yet to be picked
 }, { timestamps: true });
 
 module.exports = mongoose.model('ActiveGame', activeGameSchema, 'ActiveGames');

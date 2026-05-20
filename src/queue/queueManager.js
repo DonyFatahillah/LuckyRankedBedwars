@@ -25,7 +25,7 @@ try {
 const { logMatch, sendLogToStaffChannel } = require('../utils/matchLogger');
 const Player = require('../models/Player');
 const partySystem = require('../utils/partySystem');
-const { publishMatch } = require('../utils/redisClient');
+const { publishMatch, getPlayerOnlineStatus, publishMatchVoid } = require('../utils/redisClient');
 const { trackJoin, getJoinTime } = require('../utils/voiceJoinTracker');
 
 // 🧠 Startup queue check
@@ -75,23 +75,36 @@ function generateHexCode() {
   return hex;
 }
 
-function getEligibleGroups(members, targetCount, maxTeamSize = 4) {
+async function getEligibleGroups(members, targetCount, maxTeamSize = 4) {
   const soloMembers = [];
   const partyGroups = [];
   const memberMap = new Map(members.map(m => [m.id, m]));
   const processedParties = new Set();
 
-  for (const member of members) {
+  // --- Filter out players without a linked IGN OR who are not online ---
+  const playerInstances = await Promise.all(members.map(m => Player.load(m)));
+  const memberToPlayer = new Map(playerInstances.map(p => [p.id, p]));
+  
+  const onlineStatuses = await Promise.all(members.map(m => getPlayerOnlineStatus(m.id)));
+  const memberToOnline = new Map(members.map((m, i) => [m.id, onlineStatuses[i]?.status === 'online']));
+
+  const validMembers = members.filter(member => {
+    const player = memberToPlayer.get(member.id);
+    const isOnline = memberToOnline.get(member.id);
+    return player && player.ingameUsername && player.ingameUsername.trim() !== "" && isOnline;
+  });
+
+  for (const member of validMembers) {
     const party = partySystem.getPartyByUser(member.id);
 
     if (party && !processedParties.has(party.leaderId)) {
       const presentMembers = party.members
         .map(id => memberMap.get(id))
-        .filter(Boolean);
+        .filter(m => m && validMembers.some(vm => vm.id === m.id));
 
-      // 🚨 CRITICAL: Check if ALL party members are present in the queue voice channel
+      // 🚨 CRITICAL: Check if ALL party members are present AND have a linked IGN AND are online
       if (presentMembers.length < party.members.length) {
-        console.log(`[QueueSelection] Skipping party led by ${party.leaderId} - Only ${presentMembers.length}/${party.members.length} members present.`);
+        console.log(`[QueueSelection] Skipping party led by ${party.leaderId} - Only ${presentMembers.length}/${party.members.length} members present, linked, and online.`);
         processedParties.add(party.leaderId);
         continue;
       }
@@ -158,8 +171,8 @@ function getEligibleGroups(members, targetCount, maxTeamSize = 4) {
   return selectedGroups;
 }
 
-function getEligiblePlayers(members, targetCount, maxTeamSize = 4) {
-  const groups = getEligibleGroups(members, targetCount, maxTeamSize);
+async function getEligiblePlayers(members, targetCount, maxTeamSize = 4) {
+  const groups = await getEligibleGroups(members, targetCount, maxTeamSize);
   return groups.flatMap(g => g.members);
 }
 
@@ -174,7 +187,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
   if (!players || players.length === 0) return;
 
   const totalRequired = teamSize * 2;
-  const eligibleGroups = getEligibleGroups(players, totalRequired, teamSize);
+  const eligibleGroups = await getEligibleGroups(players, totalRequired, teamSize);
   
   let totalSelected = 0;
   eligibleGroups.forEach(g => totalSelected += g.members.length);
@@ -270,11 +283,11 @@ async function createMatch(guild, players, teamSize, options = {}) {
         name: `🕒 Waiting Room #${hex}`,
         type: ChannelType.GuildVoice,
         parent: category.id,
-        permissionOverwrites: getPermissionOverwrites(players, PermissionFlagsBits.Connect, false)
+        permissionOverwrites: getPermissionOverwrites(allSelectedPlayers, PermissionFlagsBits.Connect, false)
       });
 
       // 2. Move players to Waiting Room (Parallel)
-      await Promise.all(players.map(async p => {
+      await Promise.all(allSelectedPlayers.map(async p => {
         if (p.voice?.channelId) {
           return p.voice.setChannel(waitingRoom).catch(() => {});
         } else {
@@ -286,51 +299,53 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
       // 3. Map Voting
       const maps = mapPicker.getRandomMaps(3);
-      const row = new ActionRowBuilder().addComponents(
-        maps.map((map, index) => 
-          new ButtonBuilder()
-            .setCustomId(`map_vote_${index}`)
-            .setLabel(map)
-            .setStyle(ButtonStyle.Primary)
-        )
-      );
+      const mapEmojis = ['1️⃣', '2️⃣', '3️⃣'];
 
       const voteEmbed = {
         title: "🗺️ Map Selection",
-        description: "Vote for the map you want to play! You have 20 seconds.",
-        fields: maps.map((m, i) => ({ name: `Map ${i + 1}`, value: m, inline: true })),
+        description: "React with the corresponding number to vote for a map! You have 20 seconds.",
+        fields: maps.map((m, i) => ({ name: `Option ${i + 1}`, value: `${mapEmojis[i]} **${m}**`, inline: true })),
         color: 0x0099ff
       };
 
       const voteMessage = await textChannel.send({
         content: allSelectedPlayers.map(p => `<@${p.id}>`).join(' '),
-        embeds: [voteEmbed],
-        components: [row]
+        embeds: [voteEmbed]
       });
+
+      // Add reactions
+      for (const emoji of mapEmojis) {
+        await voteMessage.react(emoji).catch(() => {});
+      }
 
       const votes = new Array(maps.length).fill(0);
       const voterIds = new Set();
 
-      const collector = voteMessage.createMessageComponentCollector({
-        componentType: ComponentType.Button,
-        time: 20000
+      const filter = (reaction, user) => {
+        return mapEmojis.includes(reaction.emoji.name) && allSelectedPlayers.some(p => p.id === user.id);
+      };
+
+      const collector = voteMessage.createReactionCollector({
+        filter,
+        time: 20000,
+        dispose: true
       });
 
-      collector.on('collect', async i => {
-        if (!allSelectedPlayers.some(p => p.id === i.user.id)) {
-          return i.reply({ content: "You are not in this match!", ephemeral: true });
-        }
-        if (voterIds.has(i.user.id)) {
-          return i.reply({ content: "You already voted!", ephemeral: true });
-        }
-
-        const index = parseInt(i.customId.split('_')[2]);
-        votes[index]++;
-        voterIds.add(i.user.id);
-        await i.reply({ content: `You voted for **${maps[index]}**!`, ephemeral: true });
+      collector.on('collect', (reaction, user) => {
+        if (voterIds.has(user.id)) return; 
+        voterIds.add(user.id);
       });
 
-      await new Promise(resolve => collector.on('end', resolve));
+      await new Promise(resolve => collector.on('end', async (collected) => {
+        // Tally votes from collected reactions
+        mapEmojis.forEach((emoji, index) => {
+          const reaction = collected.get(emoji);
+          if (reaction) {
+            votes[index] = Math.max(0, reaction.count - 1);
+          }
+        });
+        resolve();
+      }));
 
       const maxVotes = Math.max(...votes);
       const winners = maps.filter((_, index) => votes[index] === maxVotes);
@@ -338,113 +353,135 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
       await voteMessage.edit({
         content: `✅ **Selected Map:** ${selectedMap}`,
-        embeds: [],
-        components: []
+        embeds: []
       });
+      await voteMessage.reactions.removeAll().catch(() => {});
 
-      // 4. Create Team VCs in parallel
-      const teamVCTasks = teams.map((team, i) => guild.channels.create({
-        name: `#${hex} Team ${i + 1}`,
-        type: ChannelType.GuildVoice,
-        parent: category.id,
-        permissionOverwrites: getPermissionOverwrites(team, PermissionFlagsBits.Connect, false)
-      }));
-      const createdTeamVCs = await Promise.all(teamVCTasks);
-      createdTeamVCs.forEach(vc => vcs.push(vc.id));
+      // --- SETUP PICKING PHASE ---
+      const unpicked = allSelectedPlayers
+        .map(p => p.id)
+        .filter(id => !captains.includes(id));
 
-      // 5. Move players to Team VCs (Simultaneous)
-      await movePlayersToVoiceChannels(guild, teams, createdTeamVCs);
-      
-      // 6. Delete Waiting Room
-      await waitingRoom.delete().catch(() => {});
+      const matchData = {
+        gameId: hex,
+        players: allSelectedPlayers.map(p => p.id),
+        teamA: [captains[0]],
+        teamB: [captains[1]],
+        captainIds: captains,
+        categoryId: category.id,
+        textChannelId: textChannel.id,
+        voiceAId: null, // To be created after picking
+        voiceBId: null, // To be created after picking
+        queueType: `${teamSize}v${teamSize}`,
+        map: selectedMap,
+        startedAt: Date.now(),
+        status: 'picking',
+        pickingPhase: true,
+        pickingTurn: captains[0], // Team 1 captain starts
+        unpickedPlayers: unpicked,
+        rules,
+        isPartyMatch: options.isPartyMatch || false
+      };
+
+      await setActiveGame(hex, matchData);
+
+      const pickingEmbed = {
+        title: "🎮 Picking Phase Started",
+        description: `Captain <@${captains[0]}>, it's your turn to pick a player!\nUse \`/pick <player>\` to choose from the pool.`,
+        fields: [
+          { name: "Pool", value: unpicked.map(id => `<@${id}>`).join('\n') || "None", inline: true },
+          { name: "Team 1", value: `<@${captains[0]}>`, inline: true },
+          { name: "Team 2", value: `<@${captains[1]}>`, inline: true }
+        ],
+        color: 0xffff00
+      };
+
+      await textChannel.send({ embeds: [pickingEmbed] });
 
     } else {
       // Normal flow
       selectedMap = mapPicker.getRandomMap();
       const teamVCs = createdChannels.slice(1);
       await movePlayersToVoiceChannels(guild, teams, teamVCs);
+
+      const matchData = {
+        gameId: hex,
+        players: allSelectedPlayers.map(p => p.id),
+        teamA: teams[0].map(p => p.id),
+        teamB: teams[1].map(p => p.id),
+        captainIds: captains,
+        categoryId: category.id,
+        textChannelId: textChannel.id,
+        voiceAId: vcs[0],
+        voiceBId: vcs[1],
+        queueType: `${teamSize}v${teamSize}`,
+        map: selectedMap,
+        startedAt: Date.now(),
+        status: 'pending',
+        rules,
+        isPartyMatch: options.isPartyMatch || false
+      };
+
+      await setActiveGame(hex, matchData);
+      
+      const teamMentions = teams.map(team => team.map(m => `<@${m.id}>`));
+      const teamCaptainsMention = captains.map(id => `<@${id}>`);
+
+      const embeds = [
+        {
+          title: `Welcome to Match #${hex}`,
+          description:
+            `🗺️ **Map:** ${selectedMap}\n\n` +
+            `👑 **Team Captains:**\n• Team 1: ${teamCaptainsMention[0]}\n• Team 2: ${teamCaptainsMention[1]}\n\n` +
+            `👥 **Teams:**\n• **Team 1:** ${teamMentions[0].join(', ')}\n• **Team 2:** ${teamMentions[1].join(', ')}\n\n` +
+            `📜 **Match Rules:**\n• Note: Standard rules apply.\n\n` +
+            `${rules.rulesEmbed || ''}`,
+          color: 0x00ff00
+        }
+      ];
+
+      await textChannel.send({ embeds });
+      textChannel.send(allSelectedPlayers.map(p => `<@${p.id}>`).join(' '));
+
+      // Publish to Redis immediately for normal matches
+      await publishMatchData(guild, hex, matchData);
     }
-
-    const teamMentions = teams.map(team => team.map(m => `<@${m.id}>`));
-    const teamCaptainsMention = captains.map(id => `<@${id}>`);
-
-    const embeds = [
-      {
-        title: `Welcome to Match #${hex}`,
-        description:
-          `🗺️ **Map:** ${selectedMap}\n\n` +
-          `👑 **Team Captains:**\n• Team 1: ${teamCaptainsMention[0]}\n• Team 2: ${teamCaptainsMention[1]}\n\n` +
-          `👥 **Teams:**\n• **Team 1:** ${teamMentions[0].join(', ')}\n• **Team 2:** ${teamMentions[1].join(', ')}\n\n` +
-          `📜 **Match Rules:**\n• Note: Standard rules apply.\n\n` +
-          `${rules.rulesEmbed || ''}`,
-        color: 0x00ff00
-      }
-    ];
-
-    const messagePromise = textChannel.send({ embeds });
-    if (!isHighTier) textChannel.send(allSelectedPlayers.map(p => `<@${p.id}>`).join(' '));
-
-    const matchData = {
-      gameId: hex,
-      players: allSelectedPlayers.map(p => p.id),
-      teamA: teams[0].map(p => p.id),
-      teamB: teams[1].map(p => p.id),
-      captainIds: captains,
-      categoryId: category.id,
-      textChannelId: textChannel.id,
-      voiceAId: vcs[0],
-      voiceBId: vcs[1],
-      queueType: `${teamSize}v${teamSize}`,
-      map: selectedMap,
-      startedAt: Date.now(),
-      status: 'pending',
-      rules,
-      isPartyMatch: options.isPartyMatch || false
-    };
-
-    // Parallelize saves, logs, and redis publication
-    const postMatchTasks = [
-      logMatch(hex, matchData.teamA, matchData.teamB, { 
-        queueType: matchData.queueType, 
-        mapName: matchData.map 
-      }),
-      setActiveGame(hex, matchData),
-      (async () => {
-        const [teamAData, teamBData] = await Promise.all([
-          Promise.all(teams[0].map(async m => {
-            const p = await Player.load(m);
-            return { id: p.id, ign: p.ingameUsername, elo: p.elo };
-          })),
-          Promise.all(teams[1].map(async m => {
-            const p = await Player.load(m);
-            return { id: p.id, ign: p.ingameUsername, elo: p.elo };
-          }))
-        ]);
-
-        const formattedMap = `w_4_0_${matchData.map.toLowerCase()}`;
-        return publishMatch({
-          matchId: hex,
-          queueType: matchData.queueType,
-          map: formattedMap,
-          teamA: teamAData,
-          teamB: teamBData
-        });
-      })().catch(err => console.error('[Redis-Bridge] Failed to publish:', err))
-    ];
-
-    if (process.env.MATCH_LOGS_ID) {
-      postMatchTasks.push(sendLogToStaffChannel(guild.client, guild.id, hex, process.env.MATCH_LOGS_ID));
-    }
-
-    await Promise.all([messagePromise, ...postMatchTasks]);
 
   } catch (err) {
     console.error(`[createMatch] Failed to create match #${hex}:`, err);
   } finally {
-    // Release player locks after a short delay to allow movement to complete
-    eligibleGroups.flatMap(g => g.members.map(m => m.id)).forEach(id => {
+    // Release player locks after a short delay
+    allCandidateIds.forEach(id => {
       setTimeout(() => playerLocks.delete(id), 15000);
     });
+  }
+}
+
+async function publishMatchData(guild, hex, matchData) {
+  try {
+    const [teamAData, teamBData] = await Promise.all([
+      Promise.all(matchData.teamA.map(async id => {
+        const m = await guild.members.fetch(id).catch(() => null);
+        const p = await Player.load(m || { id, user: { username: 'Unknown' }, displayName: 'Unknown' });
+        return { id: p.id, ign: p.ingameUsername, elo: p.elo };
+      })),
+      Promise.all(matchData.teamB.map(async id => {
+        const m = await guild.members.fetch(id).catch(() => null);
+        const p = await Player.load(m || { id, user: { username: 'Unknown' }, displayName: 'Unknown' });
+        return { id: p.id, ign: p.ingameUsername, elo: p.elo };
+      }))
+    ]);
+
+    const formattedMap = `w_4_0_${matchData.map.toLowerCase()}`;
+    await publishMatch({
+      matchId: hex,
+      queueType: matchData.queueType,
+      map: formattedMap,
+      teamA: teamAData,
+      teamB: teamBData
+    });
+  } catch (err) {
+    console.error('[Redis-Bridge] Failed to publish:', err);
   }
 }
 
@@ -581,8 +618,44 @@ async function startQueuePolling(client) {
         const voiceChannel = allChannels.get(voiceChannelId);
         if (!voiceChannel || !voiceChannel.isVoiceBased()) return;
 
-        const members = [...voiceChannel.members.values()];
+        let members = [...voiceChannel.members.values()];
         if (members.length === 0) return;
+
+        // --- Party Restriction for 600+ Queue ---
+        const isHighTierQueue = queue.minElo >= 600;
+        if (isHighTierQueue) {
+          const membersToRemove = [];
+          members = members.filter(member => {
+            const party = partySystem.getPartyByUser(member.id);
+            if (party && party.members.length > 1) {
+              membersToRemove.push(member);
+              return false;
+            }
+            return true;
+          });
+
+          if (membersToRemove.length > 0) {
+            for (const member of membersToRemove) {
+              console.log(`[QueuePolling] Removing ${member.user.username} from 600+ queue (Parties not allowed).`);
+              
+              // Send a DM or try to notify them
+              member.send("⚠️ **Parties are not allowed in the 600+ ELO queue.** Please leave your party or join a different queue.").catch(() => {});
+
+              // Move them back
+              const fallbackQueue = eloQueues.find(q => q.minElo < 600 && q.voiceChannelId !== voiceChannelId);
+              if (fallbackQueue) {
+                await member.voice.setChannel(fallbackQueue.voiceChannelId).catch(() => {});
+              } else {
+                await member.voice.setChannel(null).catch(() => {}); // Disconnect if no fallback
+              }
+            }
+          }
+        }
+
+        // Filter by role if required
+        if (queue.requiredRoleId) {
+          members = members.filter(m => m.roles.cache.has(queue.requiredRoleId));
+        }
 
         // Optional: Track join time for players (already handled by voiceStateUpdate usually)
         // members.forEach(member => trackJoin(member.id));
@@ -618,5 +691,6 @@ module.exports = {
   getEligiblePlayers,
   checkAllQueueChannelsOnStartup,
   startQueuePolling,
-  queueLocks
+  queueLocks,
+  getPermissionOverwrites
 };

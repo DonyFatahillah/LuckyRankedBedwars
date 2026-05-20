@@ -9,7 +9,7 @@ module.exports = {
     console.log('[Queue1v1] handleQueue triggered');
     
     // Use prioritization logic
-    const players = queueManager.getEligiblePlayers([...members.values()], 2);
+    const players = await queueManager.getEligiblePlayers([...members.values()], 2);
 
     if (players.length < 2) {
       console.log('[Queue1v1] Not enough eligible players.');

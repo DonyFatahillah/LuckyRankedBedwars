@@ -13,6 +13,34 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   gameId = String(gameId).toUpperCase();
   const { winner, winBedbreaker, loseBedbreaker, topKiller } = options;
 
+  // --- VOID IF winBedbreaker is missing ---
+  if (!winBedbreaker || winBedbreaker === 'null') {
+    console.warn(`[autoConfirmMatch] Match ${gameId} has winBedbreaker=null. Triggering auto-void.`);
+    const voidCommand = require('../commands/admin/void');
+    
+    // Simulate interaction for void command
+    const fakeInteraction = {
+      client,
+      guild,
+      user: { id: client.user.id, username: 'Auto-System' },
+      options: {
+        getString: (name) => {
+          if (name === 'gameid') return gameId;
+          if (name === 'reason') return 'Automatic Void: winBedbreaker was null.';
+          return null;
+        }
+      },
+      deferReply: async () => {},
+      editReply: async (content) => console.log(`[Auto-Void] Result: ${content.content || content}`),
+      followUp: async (content) => console.log(`[Auto-Void] Follow-up: ${content.content || content}`)
+    };
+
+    await voidCommand.execute(fakeInteraction).catch(err => {
+      console.error(`[Auto-Void] Failed to execute void command for ${gameId}:`, err);
+    });
+    return;
+  }
+
   const activeGames = await getActiveGames();
   const match = activeGames.find(g => g.gameId === gameId);
   if (!match) {
