@@ -328,6 +328,10 @@ async function handleCategoryCleanup(leftChannel) {
   const categoryId = category?.id;
   if (!categoryId || deletedCategories.has(categoryId)) return;
 
+  // --- Only proceed if this looks like a match category (#HEXCODE ...) ---
+  const matchHexRegex = /^#([0-9A-F]{6})\b/i;
+  if (!matchHexRegex.test(category.name)) return;
+
   console.log(`[Cleanup Debug] Checking cleanup for category: ${category.name} (${categoryId})`);
 
   const activeGames = await getActiveGames();

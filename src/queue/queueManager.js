@@ -691,7 +691,8 @@ async function startQueuePolling(client) {
 
         // Filter by role if required
         if (queue.requiredRoleId) {
-          members = members.filter(m => m.roles.cache.has(queue.requiredRoleId));
+          const requiredIds = Array.isArray(queue.requiredRoleId) ? queue.requiredRoleId : [queue.requiredRoleId];
+          members = members.filter(m => requiredIds.some(id => m.roles.cache.has(id)));
         }
 
         // Optional: Track join time for players (already handled by voiceStateUpdate usually)
