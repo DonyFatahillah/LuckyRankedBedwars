@@ -117,7 +117,7 @@ async function handleEloQueue(newState, eloQueue, party = null) {
       ? party.members.map(id => newState.guild.members.cache.get(id)).filter(Boolean)
       : [...members.values()];
 
-    // Filter banned and ELO-ineligible players (Parallel)
+    // Filter banned, blacklisted, ELO-ineligible, and offline players (Parallel)
     const validationResults = await Promise.all(players.map(async member => {
       // 🚫 Banned players → move to waiting room
       if (member.roles.cache.has(RANKED_BANNED_ROLE_ID)) {
@@ -145,6 +145,17 @@ async function handleEloQueue(newState, eloQueue, party = null) {
           member,
           `❌ You must be between ${eloQueue.minElo}-${eloQueue.maxElo} ELO for ${eloQueue.type} queue.`
         );
+        return null;
+      }
+
+      // 🛑 Offline check (If already known as offline in Redis)
+      const statusData = await getPlayerOnlineStatus(member.id);
+      if (statusData && statusData.status === 'offline') {
+        await moveToWaitingRoom(
+          member,
+          "⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to queue."
+        );
+        console.log(`[OnlineCheck] Moved offline player ${member.displayName} to waiting room`);
         return null;
       }
 

@@ -91,7 +91,9 @@ async function getEligibleGroups(members, targetCount, maxTeamSize = 4) {
   const validMembers = members.filter(member => {
     const player = memberToPlayer.get(member.id);
     const isOnline = memberToOnline.get(member.id);
-    return player && player.ingameUsername && player.ingameUsername.trim() !== "" && isOnline;
+    const isBanned = member.roles.cache.has(process.env.RANKED_BANNED_ROLE_ID);
+    const isBlacklisted = member.roles.cache.has(process.env.BLACKLISTED_ROLE_ID);
+    return player && player.ingameUsername && player.ingameUsername.trim() !== "" && isOnline && !isBanned && !isBlacklisted;
   });
 
   for (const member of validMembers) {
@@ -620,6 +622,41 @@ async function startQueuePolling(client) {
 
         let members = [...voiceChannel.members.values()];
         if (members.length === 0) return;
+
+        // --- Proactive Ineligibility Check ---
+        const WAITING_ROOM_ID = process.env.WAITING_ROOM_VOICE_ID;
+        const BANNED_ROLE = process.env.RANKED_BANNED_ROLE_ID;
+        const BLACKLISTED_ROLE = process.env.BLACKLISTED_ROLE_ID;
+
+        const onlineStatuses = await Promise.all(members.map(m => getPlayerOnlineStatus(m.id)));
+        const memberStatuses = new Map(members.map((m, i) => [m.id, onlineStatuses[i]]));
+
+        const ineligibleToMove = [];
+        for (const member of members) {
+          const isBanned = BANNED_ROLE && member.roles.cache.has(BANNED_ROLE);
+          const isBlacklisted = BLACKLISTED_ROLE && member.roles.cache.has(BLACKLISTED_ROLE);
+          const statusData = memberStatuses.get(member.id);
+          const isOffline = statusData && statusData.status === 'offline';
+
+          if (isBanned || isBlacklisted || isOffline) {
+            ineligibleToMove.push({ member, reason: isBanned ? 'banned' : (isBlacklisted ? 'blacklisted' : 'offline') });
+          }
+        }
+
+        if (ineligibleToMove.length > 0 && WAITING_ROOM_ID) {
+          const waitingRoom = guild.channels.cache.get(WAITING_ROOM_ID);
+          for (const { member, reason } of ineligibleToMove) {
+            console.log(`[QueuePolling] Moving ${member.user.username} to waiting room (${reason}).`);
+            if (waitingRoom) await member.voice.setChannel(waitingRoom).catch(() => {});
+            
+            const msg = reason === 'offline' 
+              ? "⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to queue."
+              : `🚫 You were moved to the waiting room because you are ${reason} from the ranked queue.`;
+            await member.send(msg).catch(() => {});
+          }
+          // Refresh members list after moving
+          members = members.filter(m => !ineligibleToMove.some(item => item.member.id === m.id));
+        }
 
         // --- Party Restriction for 600+ Queue ---
         const isHighTierQueue = queue.minElo >= 600;
