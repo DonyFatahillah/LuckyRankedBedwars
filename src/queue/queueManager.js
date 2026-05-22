@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
-const { ChannelType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
+const { ChannelType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, StringSelectMenuBuilder } = require('discord.js');
 require('dotenv').config({ path: path.join(__dirname, '/../.env') });
 const mapPicker = require('../utils/mapPicker');
 const ActiveGameModel = require('../models/ActiveGameSchema');
@@ -299,70 +299,12 @@ async function createMatch(guild, players, teamSize, options = {}) {
         }
       }));
 
-      // 3. Map Voting
-      const maps = mapPicker.getRandomMaps(3);
-      const mapEmojis = ['1️⃣', '2️⃣', '3️⃣'];
-
-      const voteEmbed = {
-        title: "🗺️ Map Selection",
-        description: "React with the corresponding number to vote for a map! You have 20 seconds.",
-        fields: maps.map((m, i) => ({ name: `Option ${i + 1}`, value: `${mapEmojis[i]} **${m}**`, inline: true })),
-        color: 0x0099ff
-      };
-
-      const voteMessage = await textChannel.send({
-        content: allSelectedPlayers.map(p => `<@${p.id}>`).join(' '),
-        embeds: [voteEmbed]
-      });
-
-      // Add reactions
-      for (const emoji of mapEmojis) {
-        await voteMessage.react(emoji).catch(() => {});
-      }
-
-      const votes = new Array(maps.length).fill(0);
-      const voterIds = new Set();
-
-      const filter = (reaction, user) => {
-        return mapEmojis.includes(reaction.emoji.name) && allSelectedPlayers.some(p => p.id === user.id);
-      };
-
-      const collector = voteMessage.createReactionCollector({
-        filter,
-        time: 20000,
-        dispose: true
-      });
-
-      collector.on('collect', (reaction, user) => {
-        if (voterIds.has(user.id)) return; 
-        voterIds.add(user.id);
-      });
-
-      await new Promise(resolve => collector.on('end', async (collected) => {
-        // Tally votes from collected reactions
-        mapEmojis.forEach((emoji, index) => {
-          const reaction = collected.get(emoji);
-          if (reaction) {
-            votes[index] = Math.max(0, reaction.count - 1);
-          }
-        });
-        resolve();
-      }));
-
-      const maxVotes = Math.max(...votes);
-      const winners = maps.filter((_, index) => votes[index] === maxVotes);
-      selectedMap = winners[Math.floor(Math.random() * winners.length)];
-
-      await voteMessage.edit({
-        content: `✅ **Selected Map:** ${selectedMap}`,
-        embeds: []
-      });
-      await voteMessage.reactions.removeAll().catch(() => {});
-
-      // --- SETUP PICKING PHASE ---
+      // 3. --- SETUP PICKING PHASE ---
       const unpicked = allSelectedPlayers
         .map(p => p.id)
         .filter(id => !captains.includes(id));
+
+      const firstPickCaptain = captains[Math.floor(Math.random() * captains.length)];
 
       const matchData = {
         gameId: hex,
@@ -375,11 +317,11 @@ async function createMatch(guild, players, teamSize, options = {}) {
         voiceAId: null, // To be created after picking
         voiceBId: null, // To be created after picking
         queueType: `${teamSize}v${teamSize}`,
-        map: selectedMap,
+        map: "TBD", // To be selected after picking
         startedAt: Date.now(),
         status: 'picking',
         pickingPhase: true,
-        pickingTurn: captains[0], // Team 1 captain starts
+        pickingTurn: firstPickCaptain, // Randomly selected captain starts
         unpickedPlayers: unpicked,
         rules,
         isPartyMatch: options.isPartyMatch || false
@@ -387,9 +329,22 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
       await setActiveGame(hex, matchData);
 
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`picking-select-${hex}`)
+        .setPlaceholder('Select a player to pick')
+        .addOptions(unpicked.map(id => {
+          const p = allSelectedPlayers.find(player => player.id === id);
+          return {
+            label: p.displayName || p.user.username || id,
+            value: id
+          };
+        }));
+
+      const row = new ActionRowBuilder().addComponents(selectMenu);
+
       const pickingEmbed = {
         title: "🎮 Picking Phase Started",
-        description: `Captain <@${captains[0]}>, it's your turn to pick a player!\nUse \`/pick <player>\` to choose from the pool.`,
+        description: `Captain <@${firstPickCaptain}>, it's your turn to pick a player!\nUse the dropdown below to choose from the pool.`,
         fields: [
           { name: "Pool", value: unpicked.map(id => `<@${id}>`).join('\n') || "None", inline: true },
           { name: "Team 1", value: `<@${captains[0]}>`, inline: true },
@@ -398,7 +353,11 @@ async function createMatch(guild, players, teamSize, options = {}) {
         color: 0xffff00
       };
 
-      await textChannel.send({ embeds: [pickingEmbed] });
+      await textChannel.send({ 
+        content: allSelectedPlayers.map(p => `<@${p.id}>`).join(' '),
+        embeds: [pickingEmbed], 
+        components: [row] 
+      });
 
     } else {
       // Normal flow
