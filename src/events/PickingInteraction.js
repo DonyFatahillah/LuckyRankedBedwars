@@ -240,4 +240,3 @@ async function finalizeMatch(guild, channel, game) {
     await channel.send({ content: "❌ Failed to finalize match creation. Please contact staff." });
   }
 }
-};
