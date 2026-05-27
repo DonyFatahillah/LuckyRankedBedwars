@@ -93,8 +93,21 @@ async function getEligibleGroups(members, targetCount, maxTeamSize = 4) {
     const isOnline = memberToOnline.get(member.id);
     const isBanned = member.roles.cache.has(process.env.RANKED_BANNED_ROLE_ID);
     const isBlacklisted = member.roles.cache.has(process.env.BLACKLISTED_ROLE_ID);
-    return player && player.ingameUsername && player.ingameUsername.trim() !== "" && isOnline && !isBanned && !isBlacklisted;
+    
+    const hasIGN = player && player.ingameUsername && player.ingameUsername.trim() !== "";
+    const isValid = hasIGN && isOnline && !isBanned && !isBlacklisted;
+
+    if (!isValid) {
+      console.log(`[QueueEligibility] Player ${member.user.username} (${member.id}) is INELIGIBLE: ` + 
+        `IGN: ${hasIGN ? '✅' : '❌'}, Online: ${isOnline ? '✅' : '❌'}, Banned: ${isBanned ? '❌' : '✅'}, Blacklisted: ${isBlacklisted ? '❌' : '✅'}`);
+    } else {
+      console.log(`[QueueEligibility] Player ${member.user.username} (${member.id}) is ELIGIBLE.`);
+    }
+
+    return isValid;
   });
+
+  console.log(`[QueueEligibility] Total members: ${members.length}, Valid members: ${validMembers.length}`);
 
   for (const member of validMembers) {
     const party = await partySystem.getPartyByUser(member.id);
