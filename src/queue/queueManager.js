@@ -25,7 +25,7 @@ try {
 const { logMatch, sendLogToStaffChannel } = require('../utils/matchLogger');
 const Player = require('../models/Player');
 const partySystem = require('../utils/partySystem');
-const { publishMatch, getPlayerOnlineStatus, publishMatchVoid } = require('../utils/redisClient');
+const { publishMatch, getPlayerOnlineStatus, publishMatchVoid, publishPlayerOnline } = require('../utils/redisClient');
 const { trackJoin, getJoinTime } = require('../utils/voiceJoinTracker');
 const eloQueues = require('../config/eloQueues');
 
@@ -50,6 +50,18 @@ async function checkAllQueueChannelsOnStartup(client) {
 
     // Track join time for players already in VC
     members.forEach(member => trackJoin(member.id));
+
+    // Request online check for everyone found
+    await Promise.all(members.map(async (member) => {
+      try {
+        const player = await Player.load(member);
+        if (player && player.ingameUsername) {
+          await publishPlayerOnline(member.id, player.ingameUsername, 'check');
+        }
+      } catch (err) {
+        console.error(`[StartupQueue] Failed to request online check for ${member.id}:`, err);
+      }
+    }));
 
     console.log(`[StartupQueue] Found ${members.length} in queue ${type} → ${voiceChannel.name}`);
 
@@ -93,21 +105,8 @@ async function getEligibleGroups(members, targetCount, maxTeamSize = 4) {
     const isOnline = memberToOnline.get(member.id);
     const isBanned = member.roles.cache.has(process.env.RANKED_BANNED_ROLE_ID);
     const isBlacklisted = member.roles.cache.has(process.env.BLACKLISTED_ROLE_ID);
-    
-    const hasIGN = player && player.ingameUsername && player.ingameUsername.trim() !== "";
-    const isValid = hasIGN && isOnline && !isBanned && !isBlacklisted;
-
-    if (!isValid) {
-      console.log(`[QueueEligibility] Player ${member.user.username} (${member.id}) is INELIGIBLE: ` + 
-        `IGN: ${hasIGN ? '✅' : '❌'}, Online: ${isOnline ? '✅' : '❌'}, Banned: ${isBanned ? '❌' : '✅'}, Blacklisted: ${isBlacklisted ? '❌' : '✅'}`);
-    } else {
-      console.log(`[QueueEligibility] Player ${member.user.username} (${member.id}) is ELIGIBLE.`);
-    }
-
-    return isValid;
+    return player && player.ingameUsername && player.ingameUsername.trim() !== "" && isOnline && !isBanned && !isBlacklisted;
   });
-
-  console.log(`[QueueEligibility] Total members: ${members.length}, Valid members: ${validMembers.length}`);
 
   for (const member of validMembers) {
     const party = await partySystem.getPartyByUser(member.id);

@@ -27,13 +27,13 @@ module.exports = {
     const [prefix, action, gameId, strikedId] = interaction.customId.split('-');
     if (prefix !== 'strike' || action !== 'vouch') return;
 
+    await interaction.deferReply({ flags: [64] });
     const userId = interaction.user.id;
 
     // ❌ Prevent striked player from vouching
     if (userId === strikedId) {
-      return await interaction.reply({
-        content: '❌ You cannot vouch for your own strike.',
-        ephemeral: true
+      return await interaction.editReply({
+        content: '❌ You cannot vouch for your own strike.'
       });
     }
 
@@ -42,18 +42,18 @@ module.exports = {
     const strike = strikes?.[gameId]?.[strikedId];
 
     if (!strike || !match) {
-      return await interaction.reply({ content: '❌ Strike data not found.', ephemeral: true });
+      return await interaction.editReply({ content: '❌ Strike data not found.' });
     }
 
     const team = strike.team; // 'team1' or 'team2'
     const validVouchers = match[team] || (team === 'team1' ? match.winners : match.losers) || [];
 
     if (!validVouchers.includes(userId)) {
-      return await interaction.reply({ content: '❌ You are not allowed to vouch for this strike.', ephemeral: true });
+      return await interaction.editReply({ content: '❌ You are not allowed to vouch for this strike.' });
     }
 
     if (strike.vouches.includes(userId)) {
-      return await interaction.reply({ content: '❌ You have already vouched.', ephemeral: true });
+      return await interaction.editReply({ content: '❌ You have already vouched.' });
     }
 
     // ✅ Record vouch
@@ -68,6 +68,6 @@ module.exports = {
       });
     }
 
-    await interaction.reply({ content: '✅ Your vouch has been recorded.', ephemeral: true });
+    await interaction.editReply({ content: '✅ Your vouch has been recorded.' });
   }
 };

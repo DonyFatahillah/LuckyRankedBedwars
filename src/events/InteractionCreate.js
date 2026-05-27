@@ -17,13 +17,15 @@ module.exports = {
     if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
       return await interaction.reply({
         content: '❌ You do not have permission to use this button.',
-        ephemeral: true
+        flags: [64]
       });
     }
 
+    await interaction.deferReply({ flags: [64] });
+
     const member = await interaction.guild.members.fetch(userId).catch(() => null);
     if (!member) {
-      return await interaction.reply({ content: '❌ Could not find the user.', ephemeral: true });
+      return await interaction.editReply({ content: '❌ Could not find the user.' });
     }
 
     const verifiedRoleId = process.env.VERIFIED_ROLE_ID || '1401289452633985086';
@@ -31,9 +33,8 @@ module.exports = {
 
     // 🛑 Prevent repeated verification
     if (action === 'approve' && alreadyVerified) {
-      await interaction.reply({
-        content: `❌ This user is already verified.`,
-        ephemeral: true
+      await interaction.editReply({
+        content: `❌ This user is already verified.`
       });
       return disableButtons(interaction.message);
     }
@@ -41,9 +42,8 @@ module.exports = {
     // 🛑 Prevent repeated denial
     if (action === 'deny') {
       // Optional: tag users as "denied" using a role or nickname suffix if needed
-      await interaction.reply({
-        content: `❌ This user is already denied or not eligible.`,
-        ephemeral: true
+      await interaction.editReply({
+        content: `❌ This user is already denied or not eligible.`
       });
       return disableButtons(interaction.message);
     }
@@ -62,9 +62,8 @@ module.exports = {
         console.warn(`[Verify] Verified role not found: ${verifiedRoleId}`);
       }
 
-      await interaction.reply({
-        content: `✅ ${member} has been verified and renamed to **[${player.elo}] ${cleanNickname}**.`,
-        ephemeral: true
+      await interaction.editReply({
+        content: `✅ ${member} has been verified and renamed to **[${player.elo}] ${cleanNickname}**.`
       });
 
       return disableButtons(interaction.message);
