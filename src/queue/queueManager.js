@@ -97,7 +97,7 @@ async function getEligibleGroups(members, targetCount, maxTeamSize = 4) {
   });
 
   for (const member of validMembers) {
-    const party = partySystem.getPartyByUser(member.id);
+    const party = await partySystem.getPartyByUser(member.id);
 
     if (party && !processedParties.has(party.leaderId)) {
       const presentMembers = party.members
@@ -207,7 +207,8 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
   const hex = generateHexCode();
   const eloQueue = options.eloQueue;
-  const isHighTier = eloQueue && eloQueue.minElo >= 600;
+  const usePlayerPicking = eloQueue && eloQueues.isPlayerPicking(eloQueue.voiceChannelId);
+  const useArenaPicking = eloQueue && eloQueues.isArenaPicking(eloQueue.voiceChannelId);
 
   const team1 = [];
   const team2 = [];
@@ -262,7 +263,10 @@ async function createMatch(guild, players, teamSize, options = {}) {
       })
     ];
 
-    if (!isHighTier) {
+    const { startMapVoting } = require('../utils/matchFinalizer');
+    const needsWaitingRoom = usePlayerPicking || useArenaPicking;
+
+    if (!needsWaitingRoom) {
       for (let i = 0; i < teams.length; i++) {
         channelTasks.push(guild.channels.create({
           name: `#${hex} Team ${i + 1}`,
@@ -275,11 +279,11 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
     const createdChannels = await Promise.all(channelTasks);
     const textChannel = createdChannels[0];
-    const vcs = !isHighTier ? createdChannels.slice(1).map(c => c.id) : [];
+    const vcs = !needsWaitingRoom ? createdChannels.slice(1).map(c => c.id) : [];
 
     let selectedMap;
 
-    if (isHighTier) {
+    if (needsWaitingRoom) {
       // 1. Create Waiting Room VC
       const waitingRoom = await guild.channels.create({
         name: `🕒 Waiting Room #${hex}`,
@@ -299,68 +303,96 @@ async function createMatch(guild, players, teamSize, options = {}) {
         }
       }));
 
-      // 3. --- SETUP PICKING PHASE ---
-      const unpicked = allSelectedPlayers
-        .map(p => p.id)
-        .filter(id => !captains.includes(id));
+      if (usePlayerPicking) {
+        // 3. --- SETUP PICKING PHASE ---
+        const unpicked = allSelectedPlayers
+          .map(p => p.id)
+          .filter(id => !captains.includes(id));
 
-      const firstPickCaptain = captains[Math.floor(Math.random() * captains.length)];
+        const firstPickCaptain = captains[Math.floor(Math.random() * captains.length)];
 
-      const matchData = {
-        gameId: hex,
-        players: allSelectedPlayers.map(p => p.id),
-        teamA: [captains[0]],
-        teamB: [captains[1]],
-        captainIds: captains,
-        categoryId: category.id,
-        textChannelId: textChannel.id,
-        voiceAId: null, // To be created after picking
-        voiceBId: null, // To be created after picking
-        queueType: `${teamSize}v${teamSize}`,
-        map: "TBD", // To be selected after picking
-        startedAt: Date.now(),
-        status: 'picking',
-        pickingPhase: true,
-        pickingTurn: firstPickCaptain, // Randomly selected captain starts
-        unpickedPlayers: unpicked,
-        rules,
-        isPartyMatch: options.isPartyMatch || false
-      };
+        const matchData = {
+          gameId: hex,
+          players: allSelectedPlayers.map(p => p.id),
+          teamA: [captains[0]],
+          teamB: [captains[1]],
+          captainIds: captains,
+          categoryId: category.id,
+          textChannelId: textChannel.id,
+          voiceAId: null, // To be created after picking
+          voiceBId: null, // To be created after picking
+          queueType: `${teamSize}v${teamSize}`,
+          map: "TBD", // To be selected after picking
+          startedAt: Date.now(),
+          status: 'picking',
+          pickingPhase: true,
+          pickingTurn: firstPickCaptain, // Randomly selected captain starts
+          unpickedPlayers: unpicked,
+          isPlayerPicking: true,
+          isArenaPicking: useArenaPicking,
+          rules,
+          isPartyMatch: options.isPartyMatch || false
+        };
 
-      await setActiveGame(hex, matchData);
+        await setActiveGame(hex, matchData);
 
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId(`picking-select-${hex}`)
-        .setPlaceholder('Select a player to pick')
-        .addOptions(unpicked.map(id => {
-          const p = allSelectedPlayers.find(player => player.id === id);
-          return {
-            label: p.displayName || p.user.username || id,
-            value: id
-          };
-        }));
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId(`picking-select-${hex}`)
+          .setPlaceholder('Select a player to pick')
+          .addOptions(unpicked.map(id => {
+            const p = allSelectedPlayers.find(player => player.id === id);
+            return {
+              label: p.displayName || p.user.username || id,
+              value: id
+            };
+          }));
 
-      const row = new ActionRowBuilder().addComponents(selectMenu);
+        const row = new ActionRowBuilder().addComponents(selectMenu);
 
-      const pickingEmbed = {
-        title: "🎮 Picking Phase Started",
-        description: `Captain <@${firstPickCaptain}>, it's your turn to pick a player!\nUse the dropdown below to choose from the pool.`,
-        fields: [
-          { name: "Pool", value: unpicked.map(id => `<@${id}>`).join('\n') || "None", inline: true },
-          { name: "Team 1", value: `<@${captains[0]}>`, inline: true },
-          { name: "Team 2", value: `<@${captains[1]}>`, inline: true }
-        ],
-        color: 0xffff00
-      };
+        const pickingEmbed = {
+          title: "🎮 Picking Phase Started",
+          description: `Captain <@${firstPickCaptain}>, it's your turn to pick a player!\nUse the dropdown below to choose from the pool.`,
+          fields: [
+            { name: "Pool", value: unpicked.map(id => `<@${id}>`).join('\n') || "None", inline: true },
+            { name: "Team 1", value: `<@${captains[0]}>`, inline: true },
+            { name: "Team 2", value: `<@${captains[1]}>`, inline: true }
+          ],
+          color: 0xffff00
+        };
 
-      await textChannel.send({ 
-        content: allSelectedPlayers.map(p => `<@${p.id}>`).join(' '),
-        embeds: [pickingEmbed], 
-        components: [row] 
-      });
+        await textChannel.send({ 
+          content: allSelectedPlayers.map(p => `<@${p.id}>`).join(' '),
+          embeds: [pickingEmbed], 
+          components: [row] 
+        });
+      } else {
+        // useArenaPicking is true, usePlayerPicking is false
+        const matchData = {
+          gameId: hex,
+          players: allSelectedPlayers.map(p => p.id),
+          teamA: teams[0].map(p => p.id),
+          teamB: teams[1].map(p => p.id),
+          captainIds: captains,
+          categoryId: category.id,
+          textChannelId: textChannel.id,
+          voiceAId: null,
+          voiceBId: null,
+          queueType: `${teamSize}v${teamSize}`,
+          map: "TBD",
+          startedAt: Date.now(),
+          status: 'voting',
+          isPlayerPicking: false,
+          isArenaPicking: true,
+          rules,
+          isPartyMatch: options.isPartyMatch || false
+        };
+
+        await setActiveGame(hex, matchData);
+        await startMapVoting(guild, textChannel, matchData);
+      }
 
     } else {
-      // Normal flow
+      // Normal flow (Neither picking nor arena voting)
       selectedMap = mapPicker.getRandomMap();
       const teamVCs = createdChannels.slice(1);
       await movePlayersToVoiceChannels(guild, teams, teamVCs);
@@ -379,6 +411,8 @@ async function createMatch(guild, players, teamSize, options = {}) {
         map: selectedMap,
         startedAt: Date.now(),
         status: 'pending',
+        isPlayerPicking: false,
+        isArenaPicking: false,
         rules,
         isPartyMatch: options.isPartyMatch || false
       };
@@ -621,14 +655,18 @@ async function startQueuePolling(client) {
         const isHighTierQueue = queue.minElo >= 600;
         if (isHighTierQueue) {
           const membersToRemove = [];
-          members = members.filter(member => {
-            const party = partySystem.getPartyByUser(member.id);
+          const filteredMembers = [];
+          
+          for (const member of members) {
+            const party = await partySystem.getPartyByUser(member.id);
             if (party && party.members.length > 1) {
               membersToRemove.push(member);
-              return false;
+            } else {
+              filteredMembers.push(member);
             }
-            return true;
-          });
+          }
+          
+          members = filteredMembers;
 
           if (membersToRemove.length > 0) {
             for (const member of membersToRemove) {

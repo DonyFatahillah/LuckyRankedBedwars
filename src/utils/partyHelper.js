@@ -42,9 +42,9 @@ function pickPlayersFromQueue(players, teamSize) {
  * Checks if a player is in a party that fits within a team size.
  * Returns the members of the party if eligible, else null.
  */
-function getEligiblePartyMembers(userId, teamSize) {
-  const partyMembers = partySystem.getEligibleParty(userId, teamSize);
-  return partyMembers || null;
+async function getEligiblePartyMembers(userId, teamSize) {
+  const partyMembers = await partySystem.getEligibleParty(userId, teamSize);
+  return partyMembers || [userId];
 }
 
 module.exports = { pickPlayersFromQueue, getEligiblePartyMembers };

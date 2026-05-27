@@ -4,33 +4,17 @@ const Party = require('../models/Party');
 const PartyModel = require('../models/PartySchema');
 
 let parties = new Map();
-let partyMode = false;
-const DEFAULT_MAX_MEMBERS = 2;
+const { isPartyMatch, setPartyMatch } = require('./partyModeManager');
 
 // -------------------------
 // Party Mode (global toggle)
 // -------------------------
-async function loadPartyMode() {
-  try {
-    const mode = await redis.get('party:mode');
-    partyMode = mode === 'true';
-  } catch (err) {
-    console.error('[PartySystem] Failed to load party mode from Redis:', err);
-    partyMode = false;
-  }
-}
-
 async function setPartyMode(state) {
-  partyMode = Boolean(state);
-  try {
-    await redis.set('party:mode', partyMode);
-  } catch (err) {
-    console.error('[PartySystem] Failed to save party mode to Redis:', err);
-  }
+  await setPartyMatch(state);
 }
 
-function isPartyMode() {
-  return partyMode;
+async function isPartyMode() {
+  return await isPartyMatch();
 }
 
 // -------------------------
@@ -190,8 +174,8 @@ async function acceptInvite(userId, leaderId) {
   return true;
 }
 
-function getEligibleParty(userId, teamSize) {
-  if (!isPartyMode()) return null;
+async function getEligibleParty(userId, teamSize) {
+  if (!(await isPartyMode())) return null;
   const party = getPartyByUser(userId);
   if (!party || party.size > teamSize) return null;
   return party.members; 
@@ -213,7 +197,6 @@ function listParties() {
 // -------------------------
 // Init
 // -------------------------
-loadPartyMode();
 
 module.exports = {
   isPartyMode,

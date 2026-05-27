@@ -11,7 +11,8 @@ module.exports = {
   async execute(interaction) {
     await logStaffCommand(interaction);
 
-    const newStatus = !isPartyMode();
+    const currentMode = await isPartyMode();
+    const newStatus = !currentMode;
     await setPartyMode(newStatus);
 
     // ✅ Disband all parties when disabling Party Mode

@@ -19,6 +19,8 @@ class ActiveGame {
     this.pickingPhase = data.pickingPhase || false;
     this.pickingTurn = data.pickingTurn || null;
     this.unpickedPlayers = data.unpickedPlayers || [];
+    this.isPlayerPicking = data.isPlayerPicking || false;
+    this.isArenaPicking = data.isArenaPicking || false;
     this.captainIds = data.captainIds || [];
     this.textChannelId = data.textChannelId || data.channelId;
   }

@@ -121,8 +121,11 @@ module.exports = {
     const guild = interaction.guild;
     let party = getPartyByUser(userId);
 
-    if (!isPartyMatch()) {
-      return interaction.editReply({ content: '⚠️ Party Mode is currently disabled.', ephemeral: false });
+    if (!(await isPartyMatch())) {
+      return interaction.editReply({ 
+        content: '❌ **Party System is currently disabled.** Solo queue only for this season!', 
+        ephemeral: false 
+      });
     }
 
     switch (sub) {
