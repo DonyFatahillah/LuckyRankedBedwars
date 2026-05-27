@@ -27,10 +27,10 @@ const Player = require('../models/Player');
 const partySystem = require('../utils/partySystem');
 const { publishMatch, getPlayerOnlineStatus, publishMatchVoid } = require('../utils/redisClient');
 const { trackJoin, getJoinTime } = require('../utils/voiceJoinTracker');
+const eloQueues = require('../config/eloQueues');
 
 // 🧠 Startup queue check
 async function checkAllQueueChannelsOnStartup(client) {
-  const eloQueues = require('../config/eloQueues');
   const guildId = process.env.GUILD_ID;
   if (!guildId) return;
   const guild = await client.guilds.fetch(guildId).catch(() => null);
@@ -591,7 +591,6 @@ async function loadActiveGames() {
 
 
 async function startQueuePolling(client) {
-  const eloQueues = require('../config/eloQueues');
   const guildId = process.env.GUILD_ID;
   if (!guildId) return;
 

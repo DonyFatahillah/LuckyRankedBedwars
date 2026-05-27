@@ -7,8 +7,8 @@ module.exports = [
     minElo: 0,
     maxElo: 600,
     voiceChannelId: process.env.QUEUE_0_600_3V3_ELO_VOICE_ID,
-    isPlayerPicking: true,
-    isArenaPicking: true
+    isPlayerPicking: false,
+    isArenaPicking: false
   },
   {
     range: [0, 600],
@@ -16,8 +16,8 @@ module.exports = [
     minElo: 0,
     maxElo: 600,
     voiceChannelId: process.env.QUEUE_0_600_4V4_ELO_VOICE_ID,
-    isPlayerPicking: true,
-    isArenaPicking: true
+    isPlayerPicking: false,
+    isArenaPicking: false
   },
   {
     range: [600, Infinity],
@@ -62,8 +62,8 @@ module.exports = [
     maxElo: Infinity,
     voiceChannelId: process.env.QUEUE_PREMIUM_VOICE_ID,
     requiredRoleId: [process.env.PREMIUM_ROLE_ID, process.env.PUGS_ROLE_ID, process.env.PITS_ROLE_ID, process.env.PUPS_ROLE_ID, process.env.STAFF_ROLE_ID],
-    isPlayerPicking: true,
-    isArenaPicking: true
+    isPlayerPicking: false,
+    isArenaPicking: false
   },
   ];
 
