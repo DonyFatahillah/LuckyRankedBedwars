@@ -29,7 +29,7 @@ const ALL_QUEUE_IDS = Object.entries(process.env)
   .map(([, value]) => value);
 
 const deletedCategories = new Set();
-const ONLINE_CHECK_TIMEOUT_MS = 5000;
+const ONLINE_CHECK_TIMEOUT_MS = 10000;
 const ONLINE_CHECK_INTERVAL_MS = 250;
 
 module.exports = {
