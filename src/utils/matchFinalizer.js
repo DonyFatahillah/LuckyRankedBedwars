@@ -22,24 +22,35 @@ async function startMapVoting(guild, channel, game) {
 
     const row = new ActionRowBuilder().addComponents(mapButtons);
 
-    const voteEmbed = {
-      title: "🗺️ Map Selection",
-      description: "Teams are finalized! Now, everyone vote for the map you want to play.\nYou have 20 seconds.",
-      fields: [
-        { name: "Team 1", value: game.teamA.map(id => `<@${id}>`).join('\n'), inline: true },
-        { name: "Team 2", value: game.teamB.map(id => `<@${id}>`).join('\n'), inline: true },
-        { name: "Maps", value: maps.map((m, i) => `${i + 1}. **${m}**`).join('\n'), inline: false }
-      ],
-      color: 0x0099ff
+    const buildVoteEmbed = (currentVoters) => {
+      return {
+        title: "🗺️ Map Selection",
+        description: "Teams are finalized! Now, everyone vote for the map you want to play.\nYou have 20 seconds.",
+        fields: [
+          { name: "Team 1", value: game.teamA.map(id => `<@${id}>`).join('\n'), inline: true },
+          { name: "Team 2", value: game.teamB.map(id => `<@${id}>`).join('\n'), inline: true },
+          { 
+            name: "Maps", 
+            value: maps.map((m, i) => {
+              const votersForMap = currentVoters[i] || [];
+              const voterMentions = votersForMap.length > 0 ? ` (${votersForMap.map(id => `<@${id}>`).join(', ')})` : "";
+              return `${i + 1}. **${m}** — ${votersForMap.length} votes${voterMentions}`;
+            }).join('\n'), 
+            inline: false 
+          }
+        ],
+        color: 0x0099ff
+      };
     };
 
-    // If this is called from an interaction, it might need update. 
-    // But here we'll just send a new message or edit if possible.
-    // To keep it simple, we'll send a new message if interaction is not provided.
-    await channel.send({ content: game.players.map(id => `<@${id}>`).join(' '), embeds: [voteEmbed], components: [row] });
-
-    const votes = new Array(maps.length).fill(0);
+    const mapVoters = maps.map(() => []);
     const voterIds = new Set();
+
+    const voteMsg = await channel.send({ 
+      content: game.players.map(id => `<@${id}>`).join(' '), 
+      embeds: [buildVoteEmbed(mapVoters)], 
+      components: [row] 
+    });
 
     const collector = channel.createMessageComponentCollector({
       filter: i => i.customId.startsWith(`map-vote-${game.gameId}-`) && game.players.includes(i.user.id),
@@ -47,18 +58,27 @@ async function startMapVoting(guild, channel, game) {
     });
 
     collector.on('collect', async i => {
-      if (voterIds.has(i.user.id)) {
-        return i.reply({ content: "❌ You have already voted!", ephemeral: true });
-      }
-      voterIds.add(i.user.id);
       const mapIndex = parseInt(i.customId.split('-')[3]);
-      votes[mapIndex]++;
-      await i.reply({ content: `✅ You voted for **${maps[mapIndex]}**!`, ephemeral: true });
+      
+      // Remove previous vote if it exists
+      mapVoters.forEach((voters, idx) => {
+        const foundIdx = voters.indexOf(i.user.id);
+        if (foundIdx !== -1) {
+          voters.splice(foundIdx, 1);
+        }
+      });
+
+      // Add new vote
+      mapVoters[mapIndex].push(i.user.id);
+      
+      await i.deferUpdate().catch(() => {});
+      await voteMsg.edit({ embeds: [buildVoteEmbed(mapVoters)] }).catch(() => {});
     });
 
     collector.on('end', async () => {
-      const maxVotes = Math.max(...votes);
-      const winners = maps.filter((_, index) => votes[index] === maxVotes);
+      const voteCounts = mapVoters.map(v => v.length);
+      const maxVotes = Math.max(...voteCounts);
+      const winners = maps.filter((_, index) => voteCounts[index] === maxVotes);
       const selectedMap = winners[Math.floor(Math.random() * winners.length)];
 
       const updatedGame = await ActiveGame.load(game.gameId);

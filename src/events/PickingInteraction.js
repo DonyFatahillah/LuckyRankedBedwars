@@ -50,6 +50,18 @@ async function handlePicking(interaction) {
 
   game.unpickedPlayers = game.unpickedPlayers.filter(id => id !== pickedUserId);
 
+  let autoPickedUserId = null;
+  if (game.unpickedPlayers.length === 1) {
+    autoPickedUserId = game.unpickedPlayers[0];
+    const isNextTeamA = !isTeamA;
+    if (isNextTeamA) {
+      game.teamA.push(autoPickedUserId);
+    } else {
+      game.teamB.push(autoPickedUserId);
+    }
+    game.unpickedPlayers = [];
+  }
+
   if (game.unpickedPlayers.length > 0) {
     game.pickingTurn = isTeamA ? game.captainIds[1] : game.captainIds[0];
     await game.save();
@@ -69,7 +81,7 @@ async function handlePicking(interaction) {
 
     const pickingEmbed = {
       title: "🎮 Picking Phase",
-      description: `Captain <@${user.id}> picked <@${pickedUserId}>!\n\nIt is now <@${game.pickingTurn}>'s turn to pick.`,
+      description: `Captain <@${user.id}> picked <@${pickedUserId}>!\n\nIt is now Captain <@${game.pickingTurn}>'s turn to pick.`,
       fields: [
         { name: "Pool", value: game.unpickedPlayers.map(id => `<@${id}>`).join('\n') || "None", inline: true },
         { name: "Team 1", value: game.teamA.map(id => `<@${id}>`).join('\n'), inline: true },
@@ -78,17 +90,26 @@ async function handlePicking(interaction) {
       color: 0xffff00
     };
 
-    return interaction.editReply({ embeds: [pickingEmbed], components: [row] });
+    return interaction.editReply({ 
+      content: `Captain <@${user.id}> picked <@${pickedUserId}>, now it's Captain <@${game.pickingTurn}> to pick.`,
+      embeds: [pickingEmbed], 
+      components: [row] 
+    });
   } else {
     // Picking Finished!
     game.pickingPhase = false;
     game.pickingTurn = null;
     await game.save();
 
+    let finishContent = `✅ Picking finished!`;
+    if (autoPickedUserId) {
+      finishContent = `✅ Captain <@${user.id}> picked <@${pickedUserId}>. The last player <@${autoPickedUserId}> was automatically added to the other team.`;
+    }
+
     if (game.isArenaPicking) {
       game.status = 'voting';
       await game.save();
-      await interaction.editReply({ content: "✅ Picking finished! Starting map selection...", embeds: [], components: [] });
+      await interaction.editReply({ content: `${finishContent}\nStarting map selection...`, embeds: [], components: [] });
       await startMapVoting(guild, channel, game);
     } else {
       const mapPicker = require('../utils/mapPicker');
@@ -97,7 +118,7 @@ async function handlePicking(interaction) {
       game.map = selectedMap;
       game.status = 'pending';
       await game.save();
-      await interaction.editReply({ content: `✅ Picking finished! Selected map: **${selectedMap}**. Finalizing match...`, embeds: [], components: [] });
+      await interaction.editReply({ content: `${finishContent}\nSelected map: **${selectedMap}**. Finalizing match...`, embeds: [], components: [] });
       await finalizeMatch(guild, channel, game);
     }
   }
