@@ -5,7 +5,7 @@ const {
 } = require('discord.js');
 
 const { logStaffCommand } = require('../../utils/staffLogger');
-const { updateMatchStatus, getMatchLog, editLogEmbed } = require('../../utils/matchLogger');
+const { updateMatchStatus, getMatchLog, editLogEmbed, logMatch } = require('../../utils/matchLogger');
 const { deleteActiveGame } = require('../../queue/queueManager');
 const ActiveGame = require('../../models/ActiveGame');
 const Player = require('../../models/Player');
@@ -67,13 +67,22 @@ module.exports = {
     await logStaffCommand(interaction);
 
     const guild = interaction.guild;
-    const match = await getMatchLog(gameId);
-    if (!match) {
+    const activeMatch = await ActiveGame.load(gameId);
+    let match = await getMatchLog(gameId);
+
+    if (!match && !activeMatch) {
       return interaction.editReply({ content: `❌ Match ${gameId} not found.`, ephemeral: true });
     }
 
+    if (!match && activeMatch) {
+      await logMatch(gameId, activeMatch.teamA, activeMatch.teamB, {
+        queueType: activeMatch.queueType,
+        mapName: activeMatch.map
+      });
+      match = await getMatchLog(gameId);
+    }
+
     const scoringChannel = await guild.channels.fetch(SCORING_CHANNEL_ID).catch(() => null);
-    const activeMatch = await ActiveGame.load(gameId);
     let removedFromActive = false;
 
     // If match is active (not yet confirmed)
