@@ -1,30 +1,19 @@
-// src/commands/admin/removestrike.js
-
 const {
   SlashCommandBuilder,
   PermissionFlagsBits,
   EmbedBuilder,
 } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
+const PunishmentModel = require('../../models/PunishmentSchema');
 require('dotenv').config();
 
-const STRIKE_DB = path.join(__dirname, '../../../data/strikeData.json');
 const PUNISHMENT_LOGS_CHANNEL_ID = process.env.PUNISHMENT_LOGS_CHANNEL_ID;
+const RANKED_BANNED_ROLE_ID = process.env.RANKED_BANNED_ROLE_ID;
 
 const STRIKE_ROLES = [
   process.env.STRIKE_I_ROLE_ID,
   process.env.STRIKE_II_ROLE_ID,
   process.env.STRIKE_III_ROLE_ID
 ];
-
-function loadStrikes() {
-  return fs.existsSync(STRIKE_DB) ? JSON.parse(fs.readFileSync(STRIKE_DB)) : {};
-}
-
-function saveStrikes(data) {
-  fs.writeFileSync(STRIKE_DB, JSON.stringify(data, null, 2));
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -47,28 +36,31 @@ module.exports = {
       return interaction.editReply({ content: '❌ Could not find the member.' });
     }
 
-    const strikes = loadStrikes();
-
+    // Remove strike roles
     for (const roleId of STRIKE_ROLES) {
-      const role = interaction.guild.roles.cache.get(roleId);
-      if (role && member.roles.cache.has(roleId)) {
-        await member.roles.remove(role).catch(() => {});
+      if (roleId && member.roles.cache.has(roleId)) {
+        await member.roles.remove(roleId).catch(() => {});
       }
     }
 
-    delete strikes[user.id];
-    saveStrikes(strikes);
+    // Remove ranked banned role
+    if (RANKED_BANNED_ROLE_ID && member.roles.cache.has(RANKED_BANNED_ROLE_ID)) {
+      await member.roles.remove(RANKED_BANNED_ROLE_ID).catch(() => {});
+    }
+
+    // Remove from MongoDB
+    await PunishmentModel.deleteMany({ userId: user.id });
 
     const logChannel = await interaction.guild.channels.fetch(PUNISHMENT_LOGS_CHANNEL_ID).catch(() => null);
     if (logChannel) {
       const embed = new EmbedBuilder()
-        .setTitle('🧹 Strike Cleared')
-        .setDescription(`<@${user.id}> has had all strike roles and data removed.`)
+        .setTitle('🧹 Strike/Ban Cleared')
+        .setDescription(`<@${user.id}> has had all strike/ban roles and data removed.`)
         .setColor(0x00bfff)
         .setTimestamp();
       await logChannel.send({ embeds: [embed] });
     }
 
-    return interaction.editReply({ content: `✅ All strikes removed from <@${user.id}>.` });
+    return interaction.editReply({ content: `✅ All strikes/bans removed from <@${user.id}>.` });
   }
 };

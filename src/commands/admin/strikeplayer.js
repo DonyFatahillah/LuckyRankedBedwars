@@ -3,12 +3,8 @@ const {
   PermissionFlagsBits,
   EmbedBuilder
 } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
+const PunishmentModel = require('../../models/PunishmentSchema');
 require('dotenv').config();
-
-const STRIKE_DB = path.join(__dirname, '../../../data/strikeData.json');
-const BAN_DB = path.join(__dirname, '../../../data/rankedBans.json');
 
 const STRIKE_ROLES = [
   process.env.STRIKE_I_ROLE_ID,
@@ -18,14 +14,6 @@ const STRIKE_ROLES = [
 
 const RANKED_BANNED_ROLE_ID = process.env.RANKED_BANNED_ROLE_ID;
 const PUNISHMENT_LOGS_CHANNEL_ID = process.env.PUNISHMENT_LOGS_CHANNEL_ID;
-
-function loadJSON(file) {
-  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : {};
-}
-
-function saveJSON(file, data) {
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -51,18 +39,11 @@ module.exports = {
 
     if (!member) return interaction.editReply({ content: '❌ Member not found.', ephemeral: true });
 
-    const strikes = loadJSON(STRIKE_DB);
-    const bans = loadJSON(BAN_DB);
-    const now = Date.now();
-
-    if (strikes[member.id] && new Date(strikes[member.id].expiresAt).getTime() <= now) {
-      delete strikes[member.id];
-      saveJSON(STRIKE_DB, strikes);
-    }
-
-    if (bans[member.id] && bans[member.id].expiresAt <= now) {
-      delete bans[member.id];
-      saveJSON(BAN_DB, bans);
+    // Clean up expired punishments
+    await PunishmentModel.deleteMany({ userId: member.id, type: 'strike', expiresAt: { $lte: new Date() } });
+    
+    const expiredBan = await PunishmentModel.findOneAndDelete({ userId: member.id, type: 'ban', expiresAt: { $lte: new Date() } });
+    if (expiredBan) {
       await member.roles.remove(RANKED_BANNED_ROLE_ID).catch(() => {});
     }
 
@@ -87,23 +68,27 @@ module.exports = {
 
     try {
       await member.roles.add(nextRoleId);
-      strikes[member.id] = {
+      
+      const newStrike = await PunishmentModel.create({
+        userId: member.id,
+        type: 'strike',
         level: nextStrikeLevel,
-        expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() // 7 days
-      };
+        expiresAt: new Date(Date.now() + 7 * 86400000) // 7 days
+      });
 
       let banDurationDays = 0;
       if (nextStrikeLevel === 2) banDurationDays = 3;
       if (nextStrikeLevel === 3) banDurationDays = 7;
 
+      let newBan = null;
       if (banDurationDays > 0) {
-        const expiresAt = Date.now() + banDurationDays * 86400000;
-        bans[member.id] = { expiresAt };
+        newBan = await PunishmentModel.create({
+          userId: member.id,
+          type: 'ban',
+          expiresAt: new Date(Date.now() + banDurationDays * 86400000)
+        });
         await member.roles.add(RANKED_BANNED_ROLE_ID);
       }
-
-      saveJSON(STRIKE_DB, strikes);
-      saveJSON(BAN_DB, bans);
 
       await interaction.editReply({
         content: `✅ ${member} has been given **Strike ${nextLabel}**.`,
@@ -115,7 +100,7 @@ module.exports = {
         .addFields(
           { name: 'Member', value: `${member}`, inline: true },
           { name: 'Strike Level', value: nextLabel, inline: true },
-          { name: 'Expires At', value: `<t:${Math.floor(new Date(strikes[member.id].expiresAt).getTime() / 1000)}:R>`, inline: true },
+          { name: 'Expires At', value: `<t:${Math.floor(newStrike.expiresAt.getTime() / 1000)}:R>`, inline: true },
           { name: '📄 Reason', value: reason }
         )
         .setColor(nextStrikeLevel === 3 ? 0xff0000 : 0xffa500)
@@ -124,7 +109,7 @@ module.exports = {
       if (banDurationDays > 0) {
         embed.addFields({
           name: '🚫 Ranked Ban',
-          value: `Applied for ${banDurationDays} days. Expires <t:${Math.floor(bans[member.id].expiresAt / 1000)}:R>`
+          value: `Applied for ${banDurationDays} days. Expires <t:${Math.floor(newBan.expiresAt.getTime() / 1000)}:R>`
         });
       } else {
         embed.addFields({
