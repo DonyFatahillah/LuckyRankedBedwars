@@ -452,6 +452,15 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
       // Publish to Redis immediately for normal matches
       await publishMatchData(guild, hex, matchData);
+
+      await logMatch(hex, matchData.teamA, matchData.teamB, {
+        queueType: matchData.queueType,
+        mapName: matchData.map
+      });
+
+      if (process.env.MATCH_LOGS_ID) {
+        await sendLogToStaffChannel(guild.client, guild.id, hex, process.env.MATCH_LOGS_ID);
+      }
     }
 
   } catch (err) {
