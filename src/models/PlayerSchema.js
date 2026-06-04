@@ -15,6 +15,7 @@ const playerSchema = new mongoose.Schema({
   ingameUsername: { type: String, default: null },
   displayUsername: { type: String, default: null },
   minecraftUuid: { type: String, default: null },
+  lastIgnUpdate: { type: Number, default: 0 },
   linkCode: { type: String, default: null },
   linkExpiry: { type: Date, default: null }
 }, { timestamps: true });

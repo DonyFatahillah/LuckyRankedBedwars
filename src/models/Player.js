@@ -24,6 +24,7 @@ class Player {
     this.winstreak = data.winstreak ?? 0;
     this.topKills = data.mvps ?? 0;
     this.bedsBroken = data.bedsBroken ?? 0;
+    this.lastIgnUpdate = data.lastIgnUpdate ?? 0;
     this.prefixEnabled = data.prefix ?? true;
     this.recentlyPlayed = data.recentlyPlayed ?? [];
     this.lastPlayedAt = data.lastPlayedAt ?? 0;
@@ -54,7 +55,8 @@ class Player {
           lastPlayedAt: doc.lastPlayedAt,
           discordUsername: doc.discordUsername,
           ingameUsername: doc.ingameUsername,
-          displayUsername: doc.displayUsername
+          displayUsername: doc.displayUsername,
+          lastIgnUpdate: doc.lastIgnUpdate
         };
       } else {
         // Defaults if no doc found
@@ -70,7 +72,8 @@ class Player {
           lastPlayedAt: 0,
           discordUsername: member.user.username,
           ingameUsername: null,
-          displayUsername: null
+          displayUsername: null,
+          lastIgnUpdate: 0
         };
       }
       // Save to cache for future requests
@@ -201,6 +204,7 @@ class Player {
   async setIngameUsername(newName) {
     if (typeof newName !== 'string' || !newName.trim()) return;
     this.ingameUsername = newName.trim();
+    this.lastIgnUpdate = Date.now();
     await this.save();
   }
 
@@ -238,7 +242,8 @@ class Player {
       lastPlayedAt: this.lastPlayedAt,
       discordUsername: this.discordUsername,
       ingameUsername: this.ingameUsername,
-      displayUsername: this.displayUsername
+      displayUsername: this.displayUsername,
+      lastIgnUpdate: this.lastIgnUpdate
     };
 
     // Update Redis Cache
@@ -279,7 +284,8 @@ class Player {
       recentlyPlayed: this.recentlyPlayed,
       discordUsername: this.discordUsername,
       ingameUsername: this.ingameUsername,
-      displayUsername: this.displayUsername
+      displayUsername: this.displayUsername,
+      lastIgnUpdate: this.lastIgnUpdate
     };
   }
 
