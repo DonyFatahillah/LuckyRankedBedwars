@@ -53,17 +53,8 @@ async function checkAllQueueChannelsOnStartup(client) {
     // Track join time for players already in VC
     members.forEach(member => trackJoin(member.id));
 
-    // Request online check for everyone found
-    await Promise.all(members.map(async (member) => {
-      try {
-        const player = await Player.load(member);
-        if (player && player.ingameUsername) {
-          await publishPlayerOnline(member.id, player.ingameUsername, 'check');
-        }
-      } catch (err) {
-        console.error(`[StartupQueue] Failed to request online check for ${member.id}:`, err);
-      }
-    }));
+    // Request fresh online check for everyone found on startup
+    await requestOnlineChecks(members, true);
 
     const onlineConfirmed = await waitForOnlineChecks(members, 'StartupQueue');
     if (!onlineConfirmed) {
@@ -99,8 +90,14 @@ function generateHexCode() {
   return hex;
 }
 
-async function requestOnlineChecks(members) {
+async function requestOnlineChecks(members, force = false) {
   await Promise.all(members.map(async member => {
+    if (!force) {
+      const status = await getPlayerOnlineStatus(member.id);
+      if (status && (status.status === 'online' || status.status === 'offline' || status.status === 'check')) {
+        return;
+      }
+    }
     const player = await Player.load(member);
     const username = player.ingameUsername || member.user.username;
     await publishPlayerOnline(member.id, username, 'check');
@@ -160,22 +157,28 @@ async function moveIneligiblePlayer(member, reason, queueConfig = null) {
   await member.send(msg).catch(() => {});
 }
 
-async function validateQueueMembers(guild, voiceChannel, queueConfig) {
+async function validateQueueMembers(guild, voiceChannel, queueConfig, options = { forceCheck: false, wait: true }) {
   let members = [...voiceChannel.members.values()];
   if (members.length === 0) return [];
 
   const BANNED_ROLE = process.env.RANKED_BANNED_ROLE_ID;
   const BLACKLISTED_ROLE = process.env.BLACKLISTED_ROLE_ID;
 
-  // 1. Request fresh online checks for everyone
-  await requestOnlineChecks(members);
+  // 1. Request fresh online checks if needed
+  await requestOnlineChecks(members, options.forceCheck);
   
-  // 2. Wait for checks
-  await waitForOnlineChecks(members, 'Validation');
+  // 2. Wait for checks if requested, or skip if pending
+  if (options.wait) {
+    await waitForOnlineChecks(members, 'Validation');
+  } else {
+    const statuses = await getOnlineStatuses(members);
+    if (hasPendingOnlineCheck(statuses)) return []; // Not ready yet, skip this polling iteration
+  }
 
   // 3. Collect final statuses and re-validate everything
   const onlineStatuses = await Promise.all(members.map(m => getPlayerOnlineStatus(m.id)));
   const memberStatuses = new Map(members.map((m, i) => [m.id, onlineStatuses[i]]));
+
 
   const eligible = [];
   for (const member of members) {
@@ -781,8 +784,8 @@ async function startQueuePolling(client) {
         const voiceChannel = allChannels.get(voiceChannelId);
         if (!voiceChannel || !voiceChannel.isVoiceBased()) return;
 
-        // Use the centralized validation function
-        const members = await validateQueueMembers(guild, voiceChannel, queue);
+        // Use the centralized validation function with non-blocking check
+        const members = await validateQueueMembers(guild, voiceChannel, queue, { wait: false });
 
         if (members.length === 0) return;
 
