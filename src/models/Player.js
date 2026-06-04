@@ -214,7 +214,12 @@ class Player {
     const displayPart = this.displayUsername ? ` | ${this.displayUsername}` : '';
     const prefix = this.prefixEnabled ? `[${this.elo}] ` : '';
     const nickname = `${prefix}${baseName}${displayPart}`.substring(0, 32);
-    await this.member.setNickname(nickname).catch(() => {});
+    
+    try {
+      await this.member.setNickname(nickname);
+    } catch (err) {
+      console.error(`[Player] Failed to set nickname for ${this.member.id}:`, err);
+    }
   }
 
   async save() {

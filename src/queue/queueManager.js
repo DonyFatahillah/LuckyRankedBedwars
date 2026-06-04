@@ -28,6 +28,8 @@ const partySystem = require('../utils/partySystem');
 const { publishMatch, getPlayerOnlineStatus, publishMatchVoid, publishPlayerOnline } = require('../utils/redisClient');
 const { trackJoin, getJoinTime } = require('../utils/voiceJoinTracker');
 const eloQueues = require('../config/eloQueues');
+const ONLINE_CHECK_TIMEOUT_MS = 10000;
+const ONLINE_CHECK_INTERVAL_MS = 250;
 
 // 🧠 Startup queue check
 async function checkAllQueueChannelsOnStartup(client) {
@@ -63,13 +65,19 @@ async function checkAllQueueChannelsOnStartup(client) {
       }
     }));
 
+    const onlineConfirmed = await waitForOnlineChecks(members, 'StartupQueue');
+    if (!onlineConfirmed) {
+      console.log(`[StartupQueue] Skipping queue ${type} until online status is confirmed.`);
+      return;
+    }
+
     console.log(`[StartupQueue] Found ${members.length} in queue ${type} → ${voiceChannel.name}`);
 
     try {
       const handlerPath = `./queue${type}`;
       const queueHandler = require(handlerPath);
       if (typeof queueHandler.handleQueue === 'function') {
-        await queueHandler.handleQueue(guild, members);
+        await queueHandler.handleQueue(guild, members, queue);
       } else {
         console.warn(`[StartupQueue] Missing handleQueue() in ${handlerPath}`);
       }
@@ -79,12 +87,152 @@ async function checkAllQueueChannelsOnStartup(client) {
   }));
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function generateHexCode() {
   let hex;
   do {
     hex = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0').toUpperCase();
   } while (_activeGames.has(hex));
   return hex;
+}
+
+async function requestOnlineChecks(members) {
+  await Promise.all(members.map(async member => {
+    const player = await Player.load(member);
+    const username = player.ingameUsername || member.user.username;
+    await publishPlayerOnline(member.id, username, 'check');
+  }));
+}
+
+async function waitForOnlineChecks(members, logPrefix) {
+  const deadline = Date.now() + ONLINE_CHECK_TIMEOUT_MS;
+  let statuses = await getOnlineStatuses(members);
+
+  while (hasPendingOnlineCheck(statuses) && Date.now() < deadline) {
+    const pending = statuses
+      .filter(({ data }) => !data || data.status === 'check')
+      .map(({ member }) => `${member.displayName} (${member.id})`)
+      .join(', ');
+
+    console.log(`[${logPrefix}] Waiting for Redis online check: ${pending}`);
+    await sleep(ONLINE_CHECK_INTERVAL_MS);
+    statuses = await getOnlineStatuses(members);
+  }
+
+  const unresolved = statuses.filter(({ data }) => !data || data.status === 'check');
+  if (unresolved.length > 0) {
+    console.log(`[${logPrefix}] Redis online check timed out for: ${formatMembers(unresolved)}`);
+    return false;
+  }
+
+  const offline = statuses.filter(({ data }) => data.status !== 'online');
+  if (offline.length > 0) {
+    console.log(`[${logPrefix}] Queue blocked by non-online players: ${formatStatusMembers(offline)}`);
+    return false;
+  }
+
+  return true;
+}
+
+async function moveIneligiblePlayer(member, reason, queueConfig = null) {
+  const WAITING_ROOM_ID = process.env.WAITING_ROOM_VOICE_ID;
+  if (!WAITING_ROOM_ID) return;
+
+  const waitingRoom = member.guild.channels.cache.get(WAITING_ROOM_ID);
+  if (waitingRoom && member.voice.channelId !== WAITING_ROOM_ID) {
+    await member.voice.setChannel(waitingRoom).catch(() => {});
+  }
+
+  let msg;
+  if (reason === 'offline') {
+    msg = "⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to queue.";
+  } else if (reason === 'ELO ineligible' && queueConfig) {
+    msg = `❌ You must be between ${queueConfig.minElo}-${queueConfig.maxElo} ELO for the ${queueConfig.type} queue.`;
+  } else if (reason === 'party') {
+    msg = "⚠️ **Parties are not allowed in the 600+ ELO queue.** Please leave your party or join a different queue.";
+  } else {
+    msg = `🚫 You were moved to the waiting room because you are ${reason} from the ranked queue.`;
+  }
+
+  await member.send(msg).catch(() => {});
+}
+
+async function validateQueueMembers(guild, voiceChannel, queueConfig) {
+  let members = [...voiceChannel.members.values()];
+  if (members.length === 0) return [];
+
+  const BANNED_ROLE = process.env.RANKED_BANNED_ROLE_ID;
+  const BLACKLISTED_ROLE = process.env.BLACKLISTED_ROLE_ID;
+
+  // 1. Request fresh online checks for everyone
+  await requestOnlineChecks(members);
+  
+  // 2. Wait for checks
+  await waitForOnlineChecks(members, 'Validation');
+
+  // 3. Collect final statuses and re-validate everything
+  const onlineStatuses = await Promise.all(members.map(m => getPlayerOnlineStatus(m.id)));
+  const memberStatuses = new Map(members.map((m, i) => [m.id, onlineStatuses[i]]));
+
+  const eligible = [];
+  for (const member of members) {
+    const isBanned = BANNED_ROLE && member.roles.cache.has(BANNED_ROLE);
+    const isBlacklisted = BLACKLISTED_ROLE && member.roles.cache.has(BLACKLISTED_ROLE);
+    const statusData = memberStatuses.get(member.id);
+    const isOffline = !statusData || statusData.status !== 'online';
+    
+    // ELO Check
+    let isEloIneligible = false;
+    if (queueConfig && (queueConfig.minElo !== undefined || queueConfig.maxElo !== undefined)) {
+      const player = await Player.load(member);
+      if (player.elo < (queueConfig.minElo || 0) || player.elo > (queueConfig.maxElo || Infinity)) {
+        isEloIneligible = true;
+      }
+    }
+
+    // Party Check (600+)
+    let isPartyIneligible = false;
+    if (queueConfig?.minElo >= 600) {
+      const party = await partySystem.getPartyByUser(member.id);
+      if (party && party.members.length > 1) {
+        isPartyIneligible = true;
+      }
+    }
+
+    if (isBanned || isBlacklisted || isOffline || isEloIneligible || isPartyIneligible) {
+      const reason = isBanned ? 'banned' : (isBlacklisted ? 'blacklisted' : (isOffline ? 'offline' : (isEloIneligible ? 'ELO ineligible' : 'party')));
+      console.log(`[Validation] Moving ${member.user.username} to waiting room (${reason}).`);
+      await moveIneligiblePlayer(member, reason, queueConfig);
+    } else {
+      eligible.push(member);
+    }
+  }
+
+  return eligible;
+}
+
+async function getOnlineStatuses(members) {
+  return Promise.all(members.map(async member => ({
+    member,
+    data: await getPlayerOnlineStatus(member.id)
+  })));
+}
+
+function hasPendingOnlineCheck(statuses) {
+  return statuses.some(({ data }) => !data || data.status === 'check');
+}
+
+function formatMembers(entries) {
+  return entries.map(({ member }) => `${member.displayName} (${member.id})`).join(', ');
+}
+
+function formatStatusMembers(entries) {
+  return entries
+    .map(({ member, data }) => `${member.displayName} (${member.id}): ${data?.status || 'unknown'}`)
+    .join(', ');
 }
 
 async function getEligibleGroups(members, targetCount, maxTeamSize = 4) {
@@ -633,87 +781,10 @@ async function startQueuePolling(client) {
         const voiceChannel = allChannels.get(voiceChannelId);
         if (!voiceChannel || !voiceChannel.isVoiceBased()) return;
 
-        let members = [...voiceChannel.members.values()];
+        // Use the centralized validation function
+        const members = await validateQueueMembers(guild, voiceChannel, queue);
+
         if (members.length === 0) return;
-
-        // --- Proactive Ineligibility Check ---
-        const WAITING_ROOM_ID = process.env.WAITING_ROOM_VOICE_ID;
-        const BANNED_ROLE = process.env.RANKED_BANNED_ROLE_ID;
-        const BLACKLISTED_ROLE = process.env.BLACKLISTED_ROLE_ID;
-
-        const onlineStatuses = await Promise.all(members.map(m => getPlayerOnlineStatus(m.id)));
-        const memberStatuses = new Map(members.map((m, i) => [m.id, onlineStatuses[i]]));
-
-        const ineligibleToMove = [];
-        for (const member of members) {
-          const isBanned = BANNED_ROLE && member.roles.cache.has(BANNED_ROLE);
-          const isBlacklisted = BLACKLISTED_ROLE && member.roles.cache.has(BLACKLISTED_ROLE);
-          const statusData = memberStatuses.get(member.id);
-          const isOffline = statusData && statusData.status === 'offline';
-
-          if (isBanned || isBlacklisted || isOffline) {
-            ineligibleToMove.push({ member, reason: isBanned ? 'banned' : (isBlacklisted ? 'blacklisted' : 'offline') });
-          }
-        }
-
-        if (ineligibleToMove.length > 0 && WAITING_ROOM_ID) {
-          const waitingRoom = guild.channels.cache.get(WAITING_ROOM_ID);
-          for (const { member, reason } of ineligibleToMove) {
-            console.log(`[QueuePolling] Moving ${member.user.username} to waiting room (${reason}).`);
-            if (waitingRoom) await member.voice.setChannel(waitingRoom).catch(() => {});
-            
-            const msg = reason === 'offline' 
-              ? "⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to queue."
-              : `🚫 You were moved to the waiting room because you are ${reason} from the ranked queue.`;
-            await member.send(msg).catch(() => {});
-          }
-          // Refresh members list after moving
-          members = members.filter(m => !ineligibleToMove.some(item => item.member.id === m.id));
-        }
-
-        // --- Party Restriction for 600+ Queue ---
-        const isHighTierQueue = queue.minElo >= 600;
-        if (isHighTierQueue) {
-          const membersToRemove = [];
-          const filteredMembers = [];
-          
-          for (const member of members) {
-            const party = await partySystem.getPartyByUser(member.id);
-            if (party && party.members.length > 1) {
-              membersToRemove.push(member);
-            } else {
-              filteredMembers.push(member);
-            }
-          }
-          
-          members = filteredMembers;
-
-          if (membersToRemove.length > 0) {
-            for (const member of membersToRemove) {
-              console.log(`[QueuePolling] Removing ${member.user.username} from 600+ queue (Parties not allowed).`);
-              
-              // Send a DM or try to notify them
-              member.send("⚠️ **Parties are not allowed in the 600+ ELO queue.** Please leave your party or join a different queue.").catch(() => {});
-
-              // Move them back
-              const fallbackQueue = eloQueues.find(q => q.minElo < 600 && q.voiceChannelId !== voiceChannelId);
-              if (fallbackQueue) {
-                await member.voice.setChannel(fallbackQueue.voiceChannelId).catch(() => {});
-              } else {
-                await member.voice.setChannel(null).catch(() => {}); // Disconnect if no fallback
-              }
-            }
-          }
-        }
-
-        // Filter by role if required
-        if (queue.requiredRoleId) {
-          const requiredIds = Array.isArray(queue.requiredRoleId) ? queue.requiredRoleId : [queue.requiredRoleId];
-          members = members.filter(m => requiredIds.some(id => m.roles.cache.has(id)));
-        }
-
-        // Optional: Track join time for players (already handled by voiceStateUpdate usually)
-        // members.forEach(member => trackJoin(member.id));
 
         const expectedCount = type === '3v3' ? 6 : type === '4v4' ? 8 : 2;
         if (members.length < expectedCount) return;
@@ -747,5 +818,7 @@ module.exports = {
   checkAllQueueChannelsOnStartup,
   startQueuePolling,
   queueLocks,
-  getPermissionOverwrites
+  getPermissionOverwrites,
+  validateQueueMembers,
+  moveIneligiblePlayer
 };
