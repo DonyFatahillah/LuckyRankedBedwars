@@ -81,7 +81,7 @@ function setupAllstarsListener(client) {
                 return usernames;
             };
 
-            console.log(`[Allstars] Processing check request: ${data.requestId} for teams ${data.team1Name} and ${data.team2Name}`);
+            console.log(`[Allstars] Processing check request: ${data.requestId} for teams ${data.team1Name} and ${data.team2Name}. Match: ${data.matchId || 'N/A'}, Map: ${data.map || 'N/A'}`);
 
             data.team1 = await processTeam(data.team1Name);
             data.team2 = await processTeam(data.team2Name);
