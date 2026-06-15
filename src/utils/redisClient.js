@@ -124,6 +124,7 @@ function setupResultListener(client) {
       } 
       
       else if (chan === onlineChannel) {
+        console.log(`[Redis-Sub] Received online update:`, data);
         if (data.id && data.status) {
           await redis.set(getPlayerStatusKey(data.id), message, 'EX', PLAYER_STATUS_TTL_SECONDS);
         }

@@ -65,11 +65,14 @@ module.exports = {
 
     // ───── Allstars Online Check ─────
     if (newChannelId && ALLSTARS_VOICE_IDS.includes(newChannelId)) {
+      // Small delay to allow potential Redis status sync
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       const onlineStatus = await getPlayerOnlineStatus(newState.member.id);
       const isOnline = onlineStatus && (onlineStatus.status === 'online' || onlineStatus.status === 'check');
 
       if (!isOnline) {
-        console.log(`[Allstars-Guard] Moving ${newState.member.displayName} to waiting room (Not online in-game)`);
+        console.log(`[Allstars-Guard] Player ${newState.member.displayName} (${newState.member.id}) status check failed. Status:`, onlineStatus);
         if (WAITING_ROOM_VOICE_ID) {
           await newState.member.voice.setChannel(WAITING_ROOM_VOICE_ID).catch(() => {});
           await newState.member.send(`⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to join Allstars team voices.`).catch(() => {});
