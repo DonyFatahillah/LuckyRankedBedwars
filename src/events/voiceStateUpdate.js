@@ -15,6 +15,14 @@ const RANKED_BANNED_ROLE_ID = process.env.RANKED_BANNED_ROLE_ID;
 const BLACKLISTED_ROLE_ID = process.env.BLACKLISTED_ROLE_ID;
 const WAITING_ROOM_VOICE_ID = process.env.WAITING_ROOM_VOICE_ID;
 
+// Allstars Team Voice IDs
+const ALLSTARS_VOICE_IDS = [
+  process.env.TEAM_1_VOICE_ID,
+  process.env.TEAM_2_VOICE_ID,
+  process.env.TEAM_3_VOICE_ID,
+  process.env.TEAM_4_VOICE_ID,
+].filter(Boolean);
+
 const queueHandlers = {
   [process.env.QUEUE_1V1_TEST_ID]: queue1v1,
   [process.env.QUEUE_1V1_TEST2_ID]: queue1v1,
@@ -53,6 +61,21 @@ module.exports = {
       trackJoin(newState.member.id);
     } else {
       trackLeave(newState.member.id);
+    }
+
+    // ───── Allstars Online Check ─────
+    if (newChannelId && ALLSTARS_VOICE_IDS.includes(newChannelId)) {
+      const onlineStatus = await getPlayerOnlineStatus(newState.member.id);
+      const isOnline = onlineStatus && (onlineStatus.status === 'online' || onlineStatus.status === 'check');
+
+      if (!isOnline) {
+        console.log(`[Allstars-Guard] Moving ${newState.member.displayName} to waiting room (Not online in-game)`);
+        if (WAITING_ROOM_VOICE_ID) {
+          await newState.member.voice.setChannel(WAITING_ROOM_VOICE_ID).catch(() => {});
+          await newState.member.send(`⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to join Allstars team voices.`).catch(() => {});
+        }
+        return;
+      }
     }
 
     // ───── Blacklist Check ─────

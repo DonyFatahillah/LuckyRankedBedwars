@@ -70,21 +70,6 @@ function setupAllstarsListener(client) {
                 const usernames = [];
                 for (const [memberId, member] of voiceChannel.members) {
                     try {
-                        // Check if player is online in-game via Redis
-                        const onlineStatus = await getPlayerOnlineStatus(memberId);
-                        console.log(`[Allstars-Debug] Player ${member.displayName} (${memberId}) Redis Status:`, onlineStatus);
-                        
-                        const isOnline = onlineStatus && (onlineStatus.status === 'online' || onlineStatus.status === 'check');
-
-                        if (!isOnline) {
-                            console.log(`[Allstars] Moving ${member.displayName} to waiting room (Not online in-game. Status: ${onlineStatus ? onlineStatus.status : 'None'})`);
-                            if (WAITING_ROOM_ID) {
-                                await member.voice.setChannel(WAITING_ROOM_ID).catch(err => console.error(`[Allstars] Failed to move ${memberId} to waiting room:`, err.message));
-                                await member.send(`⚠️ You were moved to the waiting room because you are not online in-game during an Allstars check.`).catch(() => {});
-                            }
-                            continue;
-                        }
-
                         const player = await Player.load(member);
                         if (player && player.ingameUsername) {
                             usernames.push(player.ingameUsername);
