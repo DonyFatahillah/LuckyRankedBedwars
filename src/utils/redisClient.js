@@ -92,6 +92,14 @@ async function getPlayerOnlineStatus(userId) {
   }
 }
 
+const WAITING_ROOM_VOICE_ID = process.env.WAITING_ROOM_VOICE_ID;
+const ALLSTARS_VOICE_IDS = [
+  process.env.TEAM_1_VOICE_ID,
+  process.env.TEAM_2_VOICE_ID,
+  process.env.TEAM_3_VOICE_ID,
+  process.env.TEAM_4_VOICE_ID,
+].filter(Boolean);
+
 function setupResultListener(client) {
   const resultsChannel = process.env.REDIS_RESULTS_CHANNEL || 'minecraft.results';
   const onlineChannel = 'player.online';

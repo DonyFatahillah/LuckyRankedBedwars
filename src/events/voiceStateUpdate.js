@@ -65,14 +65,22 @@ module.exports = {
 
     // ───── Allstars Online Check ─────
     if (newChannelId && ALLSTARS_VOICE_IDS.includes(newChannelId)) {
-      // Small delay to allow potential Redis status sync
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log(`[Allstars-Guard] ${newState.member.displayName} joined team voice. Requesting fresh online check...`);
+      
+      const player = await Player.load(newState.member);
+      const username = player.ingameUsername || newState.member.user.username;
+      
+      // Request a fresh check from the Minecraft plugin
+      await publishPlayerOnline(newState.member.id, username, 'check');
+
+      // Wait a short bit for the plugin to respond via the Redis listener
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       const onlineStatus = await getPlayerOnlineStatus(newState.member.id);
       const isOnline = onlineStatus && (onlineStatus.status === 'online' || onlineStatus.status === 'check');
 
       if (!isOnline) {
-        console.log(`[Allstars-Guard] Player ${newState.member.displayName} (${newState.member.id}) status check failed. Status:`, onlineStatus);
+        console.log(`[Allstars-Guard] Player ${newState.member.displayName} (${newState.member.id}) status check failed after fresh request. Status:`, onlineStatus);
         if (WAITING_ROOM_VOICE_ID) {
           await newState.member.voice.setChannel(WAITING_ROOM_VOICE_ID).catch(() => {});
           await newState.member.send(`⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to join Allstars team voices.`).catch(() => {});
