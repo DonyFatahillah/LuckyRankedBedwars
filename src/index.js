@@ -17,6 +17,7 @@
   const {cleanInvalidMessages} = require('./events/messageCreatePacks')
   const connectDB = require('./config/database');
   const { setupResultListener } = require('./utils/redisClient');
+  const { setupAllstarsListener } = require('./utils/allstarsManager');
 
   let loadLogs, cleanMatchLogs, getActiveGames, loadActiveGames, deleteActiveGame, checkAllQueueChannelsOnStartup, startQueuePolling;
 
@@ -145,6 +146,7 @@
       await maintenanceTask.execute(client);
 
       setupResultListener(client);
+      setupAllstarsListener(client);
 
       await startQueuePolling(client);
 
