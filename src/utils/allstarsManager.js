@@ -41,18 +41,19 @@ function setupAllstarsListener(client) {
                 return;
             }
 
-            // Map team names to Voice IDs from environment
+            // Map team names to Voice IDs from environment (normalized to lowercase keys)
             const teamVoiceMapping = {
-                "Team1": process.env.TEAM_1_VOICE_ID,
-                "Team2": process.env.TEAM_2_VOICE_ID,
-                "Team3": process.env.TEAM_3_VOICE_ID,
-                "Team4": process.env.TEAM_4_VOICE_ID
+                "team1": process.env.TEAM_1_VOICE_ID,
+                "team2": process.env.TEAM_2_VOICE_ID,
+                "team3": process.env.TEAM_3_VOICE_ID,
+                "team4": process.env.TEAM_4_VOICE_ID
             };
 
             const processTeam = async (teamName) => {
                 if (!teamName) return [];
                 
-                const normalizedName = teamName.replace(/\s+/g, '');
+                // Normalize: remove spaces and convert to lowercase (e.g., "Team 1" -> "team1")
+                const normalizedName = teamName.replace(/\s+/g, '').toLowerCase();
                 const voiceId = teamVoiceMapping[normalizedName];
                 
                 if (!voiceId) {
