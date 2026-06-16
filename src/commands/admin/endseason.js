@@ -4,6 +4,7 @@ const path = require('path');
 const PlayerModel = require('../../models/PlayerSchema');
 const MatchLogModel = require('../../models/MatchLogSchema');
 const Player = require('../../models/Player');
+const { redis } = require('../../utils/redisClient');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -37,26 +38,72 @@ module.exports = {
       const totals = dailyMatches.map(m => m.total);
       const voids = dailyMatches.map(m => m.voided);
 
-      // 3. Get Top 8
-      const top8 = await PlayerModel.find({}).sort({ elo: -1 }).limit(8);
+      // 3. Get Top 16
+      const top16 = await PlayerModel.find({}).sort({ elo: -1 }).limit(16);
 
       // 4. Generate Chart URL (QuickChart)
-      const chartUrl = `https://quickchart.io/chart?c={type:'line',data:{labels:[${labels.map(l => `'${l}'`).join(',')}],datasets:[{label:'Total Matches',data:[${totals.join(',')}],borderColor:'purple',fill:false},{label:'Voided',data:[${voids.join(',')}],borderColor:'gray',fill:false}]}}`;
+      let chartUrl = null;
+      if (labels.length > 0) {
+        const chartConfig = {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: 'Total Matches',
+                data: totals,
+                borderColor: 'purple',
+                fill: false
+              },
+              {
+                label: 'Voided',
+                data: voids,
+                borderColor: 'gray',
+                fill: false
+              }
+            ]
+          }
+        };
+        chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+      }
 
       // 5. Reset Stats
       await PlayerModel.updateMany({}, { $set: { elo: 1000, wins: 0, losses: 0, winstreak: 0, mvps: 0, bedsBroken: 0 } });
       await MatchLogModel.deleteMany({});
-      // Note: Redis cache should be cleared here ideally as well
+      
+      // Clear Redis Cache
+      try {
+        const playerKeys = await redis.keys('player.cache:*');
+        const gameKeys = await redis.keys('game:*');
+        const matchKeys = await redis.keys('match:*');
+        const allKeys = [...playerKeys, ...gameKeys, ...matchKeys];
+        
+        if (allKeys.length > 0) {
+          // Redis del can fail if the list is too long, but for a bot it's likely fine.
+          // For safety with many keys, we could chunk it, but let's stick to simple del for now.
+          await redis.del(allKeys);
+          console.log(`[endseason] Cleared ${allKeys.length} Redis keys.`);
+        }
+      } catch (redisErr) {
+        console.error('[endseason] Redis clear failed:', redisErr);
+      }
 
       // 6. Report
+      const top16Value = top16.length > 0 
+        ? top16.map((p, i) => `\`${i+1}.\` <@${p.userId}> - **${p.elo}**`).join('\n')
+        : 'No players found.';
+
       const embed = new EmbedBuilder()
         .setTitle(`🏁 Season ${seasonName} Archive & Reset Complete`)
         .setDescription(`Archive saved to \`${archivePath}\``)
         .addFields(
-          { name: '🏆 Top 8 ELO', value: top8.map((p, i) => `\`${i+1}.\` <@${p.userId}> - **${p.elo}**`).join('\n') },
+          { name: '🏆 Top 16 ELO', value: top16Value },
         )
-        .setImage(chartUrl)
         .setColor(0x800080);
+
+      if (chartUrl) {
+        embed.setImage(chartUrl);
+      }
 
       await interaction.editReply({ content: '✅ Season ended successfully.', embeds: [embed] });
       
