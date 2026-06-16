@@ -23,49 +23,54 @@ module.exports = async function runRankSync(client, membersArg = null) {
 
   // Ensure members are fetched or use provided ones
   const members = membersArg || await guild.members.fetch();
+  console.log(`[Rank Sync] Processing ${members.size} total members...`);
 
-  // Load ELO data from MongoDB
-  let players = [];
+  // Load ELO data from MongoDB to have a quick lookup
+  const playerMap = new Map();
   try {
-    players = await PlayerModel.find({}, 'userId elo').lean();
+    const dbPlayers = await PlayerModel.find({}, 'userId elo').lean();
+    dbPlayers.forEach(p => playerMap.set(p.userId, p.elo));
   } catch (err) {
     console.error('[Rank Sync] Failed to fetch players from MongoDB:', err);
-    return;
   }
 
   const updatedRoles = [];
   const updatedNicks = [];
-  const skipped = [];
+  let processedCount = 0;
 
-  for (const playerData of players) {
-    const { userId, elo } = playerData;
-    const member = members.get(userId);
+  for (const [userId, member] of members) {
+    if (member.user.bot) continue;
+    
+    // Only sync verified users
+    if (!member.roles.cache.has(verifiedRoleId)) continue;
 
-    if (!member) {
-      skipped.push({ userId, reason: 'Not in server' });
-      continue;
-    }
-
-    if (!member.roles.cache.has(verifiedRoleId)) {
-      skipped.push({ userId, reason: 'Not verified' });
-      continue;
-    }
+    processedCount++;
+    const elo = playerMap.has(userId) ? playerMap.get(userId) : 0;
 
     // 1. Update Rank Roles
-    const correctRank = getRankByElo(elo);
-    if (correctRank && correctRank.roleId) {
-      if (!member.roles.cache.has(correctRank.roleId)) {
-        await updateRankRoles(member, elo);
-        updatedRoles.push(userId);
+    try {
+      const correctRank = getRankByElo(elo);
+      if (correctRank && correctRank.roleId) {
+        if (!member.roles.cache.has(correctRank.roleId)) {
+          await updateRankRoles(member, elo);
+          updatedRoles.push(userId);
+        }
       }
+    } catch (err) {
+      console.error(`[Rank Sync] Role error for ${userId}:`, err.message);
     }
 
-    // 2. Update Nickname (ELO Prefix)
+    // 2. Force Nickname Update (ELO Prefix)
     try {
+      // Load player (this handles defaults if not in DB)
       const player = await Player.load(member);
+      
+      // Ensure the elo in the player object matches our lookup (important if DB was just reset)
+      player.elo = elo; 
+
       const oldNick = member.nickname || member.user.username;
       
-      // We call setNickname to force the correct [ELO] prefix
+      // setNickname internally uses player.elo to build the [ELO] prefix
       await player.setNickname();
       
       const newNick = member.nickname || member.user.username;
@@ -73,12 +78,10 @@ module.exports = async function runRankSync(client, membersArg = null) {
         updatedNicks.push(userId);
       }
     } catch (err) {
-      console.error(`[Rank Sync] Failed to update nickname for ${userId}:`, err.message);
+      console.error(`[Rank Sync] Nickname error for ${userId}:`, err.message);
     }
   }
 
-  console.log(`✅ [Rank Sync] Updated ${updatedRoles.length} rank roles and ${updatedNicks.length} nicknames.`);
-  if (skipped.length > 0) {
-    console.log(`⚠️ [Rank Sync] Skipped ${skipped.length} members (not in server or not verified).`);
-  }
+  console.log(`✅ [Rank Sync] Processed ${processedCount} verified members.`);
+  console.log(`✅ [Rank Sync] Updated ${updatedRoles.length} roles and ${updatedNicks.length} nicknames.`);
 };
