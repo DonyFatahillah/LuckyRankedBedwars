@@ -82,13 +82,24 @@ module.exports = {
         .addOptions(maps.map(map => ({ label: map, value: map })))
     );
 
+    const votes = new Map(); // Map<mapName, Set<userId>>
+    maps.forEach(map => votes.set(map, new Set()));
+
+    const getEmbedDescription = () => {
+      let desc = `Teams: **${team1Key.toUpperCase()}** vs **${team2Key.toUpperCase()}**\n\n**Choices:**\n`;
+      for (const [map, users] of votes) {
+        desc += `- **${map}** (${users.size} votes): ${users.size > 0 ? Array.from(users).map(id => `<@${id}>`).join(', ') : 'No votes yet'}\n`;
+      }
+      desc += `\nOnly players in these team voices can vote. Voting ends in 30 seconds.`;
+      return desc;
+    };
+
     const embed = new EmbedBuilder()
       .setTitle('🗳️ Allstars Map Voting')
-      .setDescription(`Teams: **${team1Key.toUpperCase()}** vs **${team2Key.toUpperCase()}**\n\nOnly players in these team voices can vote. Voting ends in 30 seconds.`)
+      .setDescription(getEmbedDescription())
       .setColor(0x3498db);
 
     const message = await interaction.editReply({ embeds: [embed], components: [row] });
-    const votes = new Map(); // Map<mapName, Set<userId>>
 
     const collector = message.createMessageComponentCollector({
       componentType: ComponentType.StringSelect,
@@ -107,10 +118,9 @@ module.exports = {
         users.delete(i.user.id);
       }
 
-      if (!votes.has(map)) votes.set(map, new Set());
       votes.get(map).add(i.user.id);
 
-      await i.reply({ content: `✅ You voted for **${map}**.`, ephemeral: true });
+      await i.update({ embeds: [embed.setDescription(getEmbedDescription())] });
     });
 
     collector.on('end', async () => {
@@ -126,7 +136,7 @@ module.exports = {
 
       const resultEmbed = new EmbedBuilder()
         .setTitle('🗳️ Voting Closed')
-        .setDescription(`Result: **${winner}** (${maxVotes} votes)`)
+        .setDescription(`Result: **${winner}** (${maxVotes} votes)\n\n**Final Breakdown:**\n${getEmbedDescription().split('\n\n')[1]}`)
         .setColor(maxVotes > 0 ? 0x2ecc71 : 0xe74c3c);
 
       await interaction.editReply({ embeds: [resultEmbed], components: [] });
