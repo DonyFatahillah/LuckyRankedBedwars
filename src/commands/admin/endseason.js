@@ -14,7 +14,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ ephemeral: false });
     const seasonName = interaction.options.getString('season');
     const archiveDir = path.join(__dirname, '../../../archived');
     if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir);
@@ -38,8 +38,27 @@ module.exports = {
       const totals = dailyMatches.map(m => m.total);
       const voids = dailyMatches.map(m => m.voided);
 
-      // 3. Get Top 16
-      const top16 = await PlayerModel.find({}).sort({ elo: -1 }).limit(16);
+      // 3. Get Top 16 (Parse from Discord Nicknames to ensure accuracy if DB was already reset)
+      const guild = interaction.guild;
+      const members = await guild.members.fetch();
+      
+      const playersFromNicknames = [];
+      members.forEach(member => {
+        const nickname = member.displayName;
+        const match = nickname.match(/^\[(\d+)\]/);
+        if (match) {
+          playersFromNicknames.push({
+            userId: member.id,
+            elo: parseInt(match[1], 10),
+            displayName: nickname
+          });
+        }
+      });
+
+      // Sort by ELO and take top 16
+      const top16 = playersFromNicknames
+        .sort((a, b) => b.elo - a.elo)
+        .slice(0, 16);
 
       // 4. Generate Chart URL (QuickChart)
       let chartUrl = null;
@@ -67,37 +86,16 @@ module.exports = {
         chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
       }
 
-      // 5. Reset Stats
-      await PlayerModel.updateMany({}, { $set: { elo: 1000, wins: 0, losses: 0, winstreak: 0, mvps: 0, bedsBroken: 0 } });
-      await MatchLogModel.deleteMany({});
-      
-      // Clear Redis Cache
-      try {
-        const playerKeys = await redis.keys('player.cache:*');
-        const gameKeys = await redis.keys('game:*');
-        const matchKeys = await redis.keys('match:*');
-        const allKeys = [...playerKeys, ...gameKeys, ...matchKeys];
-        
-        if (allKeys.length > 0) {
-          // Redis del can fail if the list is too long, but for a bot it's likely fine.
-          // For safety with many keys, we could chunk it, but let's stick to simple del for now.
-          await redis.del(allKeys);
-          console.log(`[endseason] Cleared ${allKeys.length} Redis keys.`);
-        }
-      } catch (redisErr) {
-        console.error('[endseason] Redis clear failed:', redisErr);
-      }
-
       // 6. Report
       const top16Value = top16.length > 0 
         ? top16.map((p, i) => `\`${i+1}.\` <@${p.userId}> - **${p.elo}**`).join('\n')
-        : 'No players found.';
+        : 'No players found with ELO prefixes.';
 
       const embed = new EmbedBuilder()
         .setTitle(`🏁 Season ${seasonName} Archive & Reset Complete`)
         .setDescription(`Archive saved to \`${archivePath}\``)
         .addFields(
-          { name: '🏆 Top 16 ELO', value: top16Value },
+          { name: '🏆 Top 16 ELO (Recovered from Nicknames)', value: top16Value },
         )
         .setColor(0x800080);
 
@@ -106,9 +104,28 @@ module.exports = {
       }
 
       await interaction.editReply({ content: '✅ Season ended successfully.', embeds: [embed] });
+
+      // 7. Final Reset (Perform after reporting to ensure data integrity in the embed)
+      await PlayerModel.updateMany({}, { $set: { elo: 0, wins: 0, losses: 0, winstreak: 0, mvps: 0, bedsBroken: 0 } });
+      await MatchLogModel.deleteMany({});
       
-      // Notify guild members (Optional: update nicknames/roles)
-      // Implementation depends on if you want to iterate every user
+      try {
+        const playerKeys = await redis.keys('player.cache:*');
+        const gameKeys = await redis.keys('game:*');
+        const matchKeys = await redis.keys('match:*');
+        const allKeys = [...playerKeys, ...gameKeys, ...matchKeys];
+        
+        if (allKeys.length > 0) {
+          await redis.del(allKeys);
+          console.log(`[endseason] Cleared ${allKeys.length} Redis keys.`);
+        }
+      } catch (redisErr) {
+        console.error('[endseason] Redis clear failed:', redisErr);
+      }
+      
+      // Update all nicknames back to 0 or remove prefix (Depends on system preference)
+      // For now, we just reset the DB and cache. Nicknames usually update on next activity 
+      // or can be bulk-updated if needed.
     } catch (err) {
       console.error(err);
       await interaction.editReply({ content: '❌ Failed to archive and reset season.' });
