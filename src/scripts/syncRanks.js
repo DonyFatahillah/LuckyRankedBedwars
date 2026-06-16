@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const { getRankByElo, updateRankRoles } = require('../utils/EloRank');
 const PlayerModel = require('../models/PlayerSchema');
+const Player = require('../models/Player');
 
 module.exports = async function runRankSync(client, membersArg = null) {
   const guildId = process.env.GUILD_ID;
@@ -32,11 +33,12 @@ module.exports = async function runRankSync(client, membersArg = null) {
     return;
   }
 
-  const updated = [];
+  const updatedRoles = [];
+  const updatedNicks = [];
   const skipped = [];
 
-  for (const player of players) {
-    const { userId, elo } = player;
+  for (const playerData of players) {
+    const { userId, elo } = playerData;
     const member = members.get(userId);
 
     if (!member) {
@@ -49,21 +51,34 @@ module.exports = async function runRankSync(client, membersArg = null) {
       continue;
     }
 
+    // 1. Update Rank Roles
     const correctRank = getRankByElo(elo);
-    if (!correctRank || !correctRank.roleId) {
-      skipped.push({ userId, reason: 'No rank mapping' });
-      continue;
+    if (correctRank && correctRank.roleId) {
+      if (!member.roles.cache.has(correctRank.roleId)) {
+        await updateRankRoles(member, elo);
+        updatedRoles.push(userId);
+      }
     }
 
-    if (member.roles.cache.has(correctRank.roleId)) continue;
-
-    await updateRankRoles(member, elo);
-    updated.push({ userId, rank: correctRank.name, elo });
+    // 2. Update Nickname (ELO Prefix)
+    try {
+      const player = await Player.load(member);
+      const oldNick = member.nickname || member.user.username;
+      
+      // We call setNickname to force the correct [ELO] prefix
+      await player.setNickname();
+      
+      const newNick = member.nickname || member.user.username;
+      if (oldNick !== newNick) {
+        updatedNicks.push(userId);
+      }
+    } catch (err) {
+      console.error(`[Rank Sync] Failed to update nickname for ${userId}:`, err.message);
+    }
   }
 
-  console.log(`✅ [Rank Sync] Updated ${updated.length} members' rank roles.`);
+  console.log(`✅ [Rank Sync] Updated ${updatedRoles.length} rank roles and ${updatedNicks.length} nicknames.`);
   if (skipped.length > 0) {
-    console.log(`⚠️ [Rank Sync] Skipped ${skipped.length} members:`);
-    skipped.forEach(s => console.log(`  - ${s.userId}: ${s.reason}`));
+    console.log(`⚠️ [Rank Sync] Skipped ${skipped.length} members (not in server or not verified).`);
   }
 };
