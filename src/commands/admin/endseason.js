@@ -20,44 +20,45 @@ module.exports = {
     if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir);
 
     try {
-      // 1. Archive Data
+      // 1. Capture & Archive Data (Source of truth before reset)
       const allPlayers = await PlayerModel.find({}).lean();
       const allMatches = await MatchLogModel.find({}).lean();
       
       const archivePath = path.join(archiveDir, `archived-season-${seasonName}.json`);
       fs.writeFileSync(archivePath, JSON.stringify({ players: allPlayers, matches: allMatches }, null, 2));
 
-      // 2. Aggregate Match Stats for Chart
+      // 2. Aggregate Match Stats for Chart (Using captured matches)
       const dailyMatches = await MatchLogModel.aggregate([
-        { $project: { date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, status: 1 } },
-        { $group: { _id: "$date", total: { $sum: 1 }, voided: { $sum: { $cond: [{ $eq: ["$status", "void"] }, 1, 0] } } } },
-        { $sort: { _id: 1 } }
+        { 
+          $project: { 
+            date: { 
+              $dateToString: { 
+                format: "%Y-%m-%d", 
+                date: { $ifNull: ["$createdAt", { $toDate: "$timestamp" }] } 
+              } 
+            }, 
+            status: 1 
+          } 
+        },
+        { 
+          $group: { 
+            _id: "$date", 
+            total: { $sum: 1 }, 
+            voided: { $sum: { $cond: [{ $in: ["$status", ["void", "Voided", "voided"]] }, 1, 0] } } 
+          } 
+        },
+        { $sort: { _id: -1 } },
+        { $limit: 31 },
+        { $sort: { _id: 1 } } // Sort back to chronological for chart display
       ]);
 
-      const labels = dailyMatches.map(m => m._id);
+      const labels = dailyMatches.map(m => m._id).filter(l => l);
       const totals = dailyMatches.map(m => m.total);
       const voids = dailyMatches.map(m => m.voided);
 
-      // 3. Get Top 16 (Parse from Discord Nicknames to ensure accuracy if DB was already reset)
-      const guild = interaction.guild;
-      const members = await guild.members.fetch();
-      
-      const playersFromNicknames = [];
-      members.forEach(member => {
-        const nickname = member.displayName;
-        const match = nickname.match(/^\[(\d+)\]/);
-        if (match) {
-          playersFromNicknames.push({
-            userId: member.id,
-            elo: parseInt(match[1], 10),
-            displayName: nickname
-          });
-        }
-      });
-
-      // Sort by ELO and take top 16
-      const top16 = playersFromNicknames
-        .sort((a, b) => b.elo - a.elo)
+      // 3. Get Top 16 from Captured Data
+      const top16 = [...allPlayers]
+        .sort((a, b) => (b.elo || 0) - (a.elo || 0))
         .slice(0, 16);
 
       // 4. Generate Chart URL (QuickChart)
@@ -69,7 +70,7 @@ module.exports = {
             labels: labels,
             datasets: [
               {
-                label: 'Total Matches',
+                label: 'Matches',
                 data: totals,
                 borderColor: 'purple',
                 fill: false
@@ -81,21 +82,24 @@ module.exports = {
                 fill: false
               }
             ]
+          },
+          options: {
+            backgroundColor: 'white'
           }
         };
-        chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+        chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&w=600&h=300&v=2.9.4`;
       }
 
-      // 6. Report
+      // 5. Generate & Send Report
       const top16Value = top16.length > 0 
         ? top16.map((p, i) => `\`${i+1}.\` <@${p.userId}> - **${p.elo}**`).join('\n')
-        : 'No players found with ELO prefixes.';
+        : 'No players found.';
 
       const embed = new EmbedBuilder()
         .setTitle(`🏁 Season ${seasonName} Archive & Reset Complete`)
         .setDescription(`Archive saved to \`${archivePath}\``)
         .addFields(
-          { name: '🏆 Top 16 ELO (Recovered from Nicknames)', value: top16Value },
+          { name: '🏆 Top 16 ELO', value: top16Value },
         )
         .setColor(0x800080);
 
@@ -105,7 +109,7 @@ module.exports = {
 
       await interaction.editReply({ content: '✅ Season ended successfully.', embeds: [embed] });
 
-      // 7. Final Reset (Perform after reporting to ensure data integrity in the embed)
+      // 6. Final Reset (Perform ONLY after reporting to ensure data integrity)
       await PlayerModel.updateMany({}, { $set: { elo: 0, wins: 0, losses: 0, winstreak: 0, mvps: 0, bedsBroken: 0 } });
       await MatchLogModel.deleteMany({});
       
@@ -123,9 +127,7 @@ module.exports = {
         console.error('[endseason] Redis clear failed:', redisErr);
       }
       
-      // Update all nicknames back to 0 or remove prefix (Depends on system preference)
-      // For now, we just reset the DB and cache. Nicknames usually update on next activity 
-      // or can be bulk-updated if needed.
+      console.log(`[endseason] Season ${seasonName} reset successfully.`);
     } catch (err) {
       console.error(err);
       await interaction.editReply({ content: '❌ Failed to archive and reset season.' });
