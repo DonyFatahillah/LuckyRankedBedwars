@@ -17,7 +17,9 @@ const playerSchema = new mongoose.Schema({
   minecraftUuid: { type: String, default: null },
   lastIgnUpdate: { type: Number, default: 0 },
   linkCode: { type: String, default: null },
-  linkExpiry: { type: Date, default: null }
+  linkExpiry: { type: Date, default: null },
+  isPremium: { type: Boolean, default: false },
+  premium: { type: Object, default: null }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Player', playerSchema, 'PlayerStats');

@@ -115,9 +115,10 @@ module.exports = {
       
       try {
         const playerKeys = await redis.keys('player.cache:*');
+        const eloKeys = await redis.keys('elo:*');
         const gameKeys = await redis.keys('game:*');
         const matchKeys = await redis.keys('match:*');
-        const allKeys = [...playerKeys, ...gameKeys, ...matchKeys];
+        const allKeys = [...playerKeys, ...eloKeys, ...gameKeys, ...matchKeys];
         
         if (allKeys.length > 0) {
           await redis.del(allKeys);

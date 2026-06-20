@@ -47,38 +47,33 @@ module.exports = async function runRankSync(client, membersArg = null) {
     processedCount++;
     const elo = playerMap.has(userId) ? playerMap.get(userId) : 0;
 
-    // 1. Update Rank Roles
     try {
-      const correctRank = getRankByElo(elo);
-      if (correctRank && correctRank.roleId) {
-        if (!member.roles.cache.has(correctRank.roleId)) {
+      const player = await Player.load(member);
+      
+      if (player.elo !== elo) {
+        // If there's an ELO mismatch (e.g. DB was reset but cache/Redis still had the old ELO),
+        // update the ELO properly using setElo (which saves to Redis cache, Redis ELO key, MongoDB, sets nickname, and updates roles)
+        await player.setElo(elo);
+        updatedRoles.push(userId);
+        updatedNicks.push(userId);
+      } else {
+        // Verify roles are correct
+        const correctRank = getRankByElo(elo);
+        if (correctRank && correctRank.roleId && !member.roles.cache.has(correctRank.roleId)) {
           await updateRankRoles(member, elo);
           updatedRoles.push(userId);
         }
+        
+        // Verify nickname is correct (including ELO prefix)
+        const oldNick = member.nickname || member.user.username;
+        await player.setNickname();
+        const newNick = member.nickname || member.user.username;
+        if (oldNick !== newNick) {
+          updatedNicks.push(userId);
+        }
       }
     } catch (err) {
-      console.error(`[Rank Sync] Role error for ${userId}:`, err.message);
-    }
-
-    // 2. Force Nickname Update (ELO Prefix)
-    try {
-      // Load player (this handles defaults if not in DB)
-      const player = await Player.load(member);
-      
-      // Ensure the elo in the player object matches our lookup (important if DB was just reset)
-      player.elo = elo; 
-
-      const oldNick = member.nickname || member.user.username;
-      
-      // setNickname internally uses player.elo to build the [ELO] prefix
-      await player.setNickname();
-      
-      const newNick = member.nickname || member.user.username;
-      if (oldNick !== newNick) {
-        updatedNicks.push(userId);
-      }
-    } catch (err) {
-      console.error(`[Rank Sync] Nickname error for ${userId}:`, err.message);
+      console.error(`[Rank Sync] Error for ${userId}:`, err.message);
     }
   }
 

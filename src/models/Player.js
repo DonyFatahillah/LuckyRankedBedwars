@@ -28,6 +28,8 @@ class Player {
     this.prefixEnabled = data.prefix ?? true;
     this.recentlyPlayed = data.recentlyPlayed ?? [];
     this.lastPlayedAt = data.lastPlayedAt ?? 0;
+    this.isPremium = data.isPremium ?? false;
+    this.premium = data.premium ?? null;
 
     if (Date.now() - this.lastPlayedAt > 7 * 24 * 60 * 60 * 1000) {
       this.recentlyPlayed = [];
@@ -37,7 +39,7 @@ class Player {
   static async load(member) {
     // 1. Try to get from Redis
     let data = await getPlayerCache(member.id);
-    let elo = await getElo(member.id);
+    let redisElo = await getElo(member.id);
     
     // 2. If not in Redis, get from Mongo
     if (!data) {
@@ -56,12 +58,14 @@ class Player {
           discordUsername: doc.discordUsername,
           ingameUsername: doc.ingameUsername,
           displayUsername: doc.displayUsername,
-          lastIgnUpdate: doc.lastIgnUpdate
+          lastIgnUpdate: doc.lastIgnUpdate,
+          isPremium: doc.isPremium,
+          premium: doc.premium
         };
       } else {
         // Defaults if no doc found
         data = {
-          elo: elo,
+          elo: redisElo,
           wins: 0,
           losses: 0,
           winstreak: 0,
@@ -73,14 +77,44 @@ class Player {
           discordUsername: member.user.username,
           ingameUsername: null,
           displayUsername: null,
-          lastIgnUpdate: 0
+          lastIgnUpdate: 0,
+          isPremium: false,
+          premium: null
         };
       }
       // Save to cache for future requests
       await setPlayerCache(member.id, data);
     }
-    
-    data.elo = elo;
+
+    // Use Redis ELO only if it's a valid non-zero value.
+    // If Redis is cold/expired, redisElo will be 0 — in that case keep the
+    // DB/cache value so we don't accidentally wipe the player's real ELO.
+    if (redisElo > 0) {
+      data.elo = redisElo;
+    }
+
+    // Real-time Premium synchronization on load
+    const premiumRoleId = process.env.PREMIUM_ROLE_ID;
+    const pugsRoleId = process.env.PUGS_ROLE_ID;
+    const pitsRoleId = process.env.PITS_ROLE_ID;
+    const pupsRoleId = process.env.PUPS_ROLE_ID;
+
+    const hasPremium = premiumRoleId ? member.roles.cache.has(premiumRoleId) : false;
+    const hasPugs = pugsRoleId ? member.roles.cache.has(pugsRoleId) : false;
+    const hasPits = pitsRoleId ? member.roles.cache.has(pitsRoleId) : false;
+    const hasPups = pupsRoleId ? member.roles.cache.has(pupsRoleId) : false;
+
+    const isPremium = hasPremium || hasPugs || hasPits || hasPups;
+    const premiumData = isPremium ? {
+      premium: hasPremium,
+      pugs: hasPugs,
+      pits: hasPits,
+      pups: hasPups
+    } : null;
+
+    data.isPremium = isPremium;
+    data.premium = premiumData;
+
     return new Player(member, data);
   }
 
@@ -243,7 +277,9 @@ class Player {
       discordUsername: this.discordUsername,
       ingameUsername: this.ingameUsername,
       displayUsername: this.displayUsername,
-      lastIgnUpdate: this.lastIgnUpdate
+      lastIgnUpdate: this.lastIgnUpdate,
+      isPremium: this.isPremium,
+      premium: this.premium
     };
 
     // Update Redis Cache
@@ -285,7 +321,9 @@ class Player {
       discordUsername: this.discordUsername,
       ingameUsername: this.ingameUsername,
       displayUsername: this.displayUsername,
-      lastIgnUpdate: this.lastIgnUpdate
+      lastIgnUpdate: this.lastIgnUpdate,
+      isPremium: this.isPremium,
+      premium: this.premium
     };
   }
 

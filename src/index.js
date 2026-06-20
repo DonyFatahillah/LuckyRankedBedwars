@@ -12,6 +12,7 @@
   const autoConfirmPendingMatches = require('./utils/autoConfirmPending'); 
   const runCleanup = require('./scripts/cleanupPlayers');  
   const syncRanks = require('./scripts/syncRanks');
+  const syncPremium = require('./scripts/syncPremium');
   const syncVerifiedUsers = require('./scripts/syncVerifiedUsers');
   const auditUsers = require('./scripts/auditUsers');
   const {cleanInvalidMessages} = require('./events/messageCreatePacks')
@@ -129,7 +130,8 @@
           
         await runCleanup(client, members);
         await syncRanks(client, members);  
-         await autoConfirmPendingMatches(client);  
+        await syncPremium(client, members);
+        await autoConfirmPendingMatches(client);  
         console.log(`✅ Registered slash commands to guild: ${guild.name}`);
       } else {
         await client.application.commands.set(commandsArray);
