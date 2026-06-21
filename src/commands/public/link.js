@@ -17,7 +17,7 @@ module.exports = {
     const inputCode = interaction.options.getString('code');
 
     // 1. Look for the code in PendingLinks
-    const pending = await PendingLink.findOne({ linkCode_1: inputCode });
+    const pending = await PendingLink.findOne({ linkCode: inputCode });
 
     if (!pending) {
       return interaction.editReply({
@@ -27,7 +27,7 @@ module.exports = {
 
     // 2. Load or create player and set username
     const player = await Player.load(interaction.member);
-    await player.setIngameUsername(pending.username_1);
+    await player.setIngameUsername(pending.username);
 
     // 3. Assign Role (Verified Role ID)
     const verifiedRoleId = '1401289452633985086'; // Verified/Iron role ID
@@ -45,9 +45,9 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setTitle('✅ Account Linked!')
-      .setDescription(`Successfully linked to Minecraft account: **${pending.username_1}**`)
+      .setDescription(`Successfully linked to Minecraft account: **${pending.username}**`)
       .setColor(0x00FF00)
-      .setThumbnail(`https://mc-heads.net/avatar/${pending.username_1}/100`);
+      .setThumbnail(`https://mc-heads.net/avatar/${pending.username}/100`);
 
     await interaction.editReply({ embeds: [embed] });
   }
