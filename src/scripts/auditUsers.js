@@ -52,21 +52,22 @@ async function auditUsers() {
       // Skip bots
       if (member.user.bot) continue;
 
+      // Skip if player has the verified role
+      if (member.roles.cache.has(VERIFIED_ROLE_ID)) continue;
+
       // Check if user is linked in bot data
       const cached = await getPlayerCache(memberId);
       const dbEntry = await PlayerModel.findOne({ userId: memberId });
 
       if (!cached && !dbEntry) {
         // User is not found, check if they have restricted roles
-        const hasVerifiedRole = member.roles.cache.has(VERIFIED_ROLE_ID);
         const hasRankRole = member.roles.cache.some(role => RANK_ROLE_IDS.includes(role.id));
 
-        if (hasVerifiedRole || hasRankRole) {
+        if (hasRankRole) {
           console.log(`🧹 Found invalid user: ${member.user.username} (${memberId}). Cleaning up...`);
           
           try {
             // Remove roles
-            if (hasVerifiedRole) await member.roles.remove(VERIFIED_ROLE_ID);
             for (const rankId of RANK_ROLE_IDS) {
               if (member.roles.cache.has(rankId)) await member.roles.remove(rankId);
             }
