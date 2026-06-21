@@ -140,7 +140,25 @@ function setupResultListener(client) {
         // Ignore our own requests (if we send "check")
         if (data.status === 'check') return;
 
-        console.log(`[Redis-Sub] Player ${data.username} is ${data.status} (from plugin)`);
+        let displayName = data.username;
+        if (data.id) {
+          try {
+            const cached = await getPlayerCache(data.id);
+            if (cached && cached.ingameUsername) {
+              displayName = cached.ingameUsername;
+            } else {
+              const PlayerModel = require('../models/PlayerSchema');
+              const doc = await PlayerModel.findOne({ userId: data.id });
+              if (doc && doc.ingameUsername) {
+                displayName = doc.ingameUsername;
+              }
+            }
+          } catch (err) {
+            console.error('[Redis-Sub] Error fetching player ingameUsername:', err);
+          }
+        }
+
+        console.log(`[Redis-Sub] Player ${displayName} is ${data.status} (from plugin)`);
         
         if (data.status === 'offline') {
           try {
@@ -181,7 +199,7 @@ const DATA_CACHE_CHANNEL = 'data.cache';
 async function publishDataCacheInvalidation(key) {
   try {
     await redis.publish(DATA_CACHE_CHANNEL, JSON.stringify({ action: 'invalidate', key }));
-    console.log(`[Redis] Invalidation event published to ${DATA_CACHE_CHANNEL} for key: ${key}`);
+    // console.log(`[Redis] Invalidation event published to ${DATA_CACHE_CHANNEL} for key: ${key}`);
   } catch (err) {
     console.error(`[Redis] Failed to publish invalidation to ${DATA_CACHE_CHANNEL}:`, err);
   }
