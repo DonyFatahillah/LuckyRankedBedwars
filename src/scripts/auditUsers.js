@@ -71,9 +71,7 @@ async function auditUsers() {
               if (member.roles.cache.has(rankId)) await member.roles.remove(rankId);
             }
 
-            // Reset nickname
-            await member.setNickname(member.user.username);
-            console.log(`✅ Roles removed and nickname reset for ${member.user.username}`);
+            console.log(`✅ Roles removed for ${member.user.username}`);
           } catch (err) {
             console.error(`❌ Failed to clean up ${member.user.username}:`, err.message);
           }
