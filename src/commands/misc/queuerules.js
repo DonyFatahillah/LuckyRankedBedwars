@@ -22,7 +22,12 @@ function formatSection(title, items) {
 function buildRulesEmbed(gamemode, rules) {
   const sections = [
     formatSection('✅ Allowed', rules.allowed),
-    formatSection('⏰ After Emerald II', rules.after_emerald_ii),
+    formatSection('💎 After Diamond I', rules.after_diamond_i),
+    formatSection('💎💎 After Diamond II', rules.after_diamond_ii),
+    formatSection('💎💎💎 After Diamond III', rules.after_diamond_iii),
+    formatSection('💚 After Emerald I', rules.after_emerald_i),
+    formatSection('💚💚 After Emerald II', rules.after_emerald_ii),
+    formatSection('💚💚💚 After Emerald III', rules.after_emerald_iii),
     formatSection('⚠️ After Any Bed Break', rules.after_any_bed_break),
     formatSection('⛔ Banned', rules.banned)
   ];
