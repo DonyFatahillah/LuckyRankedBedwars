@@ -3,47 +3,54 @@
     - Fireballs
     - Bridge Eggs
     - Ladders
-    - Invis
     - Diamond Armor (only 1)
     - Sponge
+    - Water (At your own base)
+  after_diamond_ii:
+    - Invis
+    - Silverfish
   after_emerald_ii:
     - Jump Potion
     - Speed Potion
+    - Knockback Stick
   after_any_bed_break:
     - TNT
-    - Side Bases
+    - Yellow Side
+    - Water (At opponent base)
+    - Spawn Item
     - Ender Pearl
-    - Knockback Stick
-    - Water (At your own base)
-    - Diamond Armor (Full Team)
   banned:
+    - Pop Up Towers
     - Bows & Arrows
-    - Pop Up Towers	
-    - Iron Golems
+    - Diamond Sword
     - Obsidian
-    - Silverfish
+    - Iron Golems
 
 4v4:
   allowed:
     - Fireballs
     - Bridge Eggs
     - Ladders
-    - Invis
     - Diamond Armor (only 2)
     - Sponge
+    - Water (At your own base)
+    - Blue Side
+  after_diamond_ii:
+    - Invis
+    - Silverfish
   after_emerald_ii:
     - Jump Potion
     - Speed Potion
+    - Knockback Stick
   after_any_bed_break:
     - TNT
-    - Side Bases
+    - Yellow Side
+    - Water (At opponent base)
+    - Spawn Item
     - Ender Pearl
-    - Knockback Stick
-    - Water (At your own base)
-    - Diamond Armor (Full Team)
   banned:
+    - Pop Up Towers
     - Bows & Arrows
-    - Pop Up Towers	
-    - Iron Golems
+    - Diamond Sword
     - Obsidian
-    - Silverfish
+    - Iron Golems
