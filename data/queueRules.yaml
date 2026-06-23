@@ -24,6 +24,7 @@
   after_any_bed_break:
     - TNT
     - Yellow Side
+    - Blue Side
     - Water (At opponent base)
     - Spawn Item
     - Ender Pearl
