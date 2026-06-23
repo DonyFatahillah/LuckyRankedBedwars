@@ -45,7 +45,15 @@ module.exports = async function runRankSync(client, membersArg = null) {
     if (!member.roles.cache.has(verifiedRoleId)) continue;
 
     processedCount++;
-    const elo = playerMap.has(userId) ? playerMap.get(userId) : 0;
+
+    // If the player has no MongoDB entry at all, skip them — defaulting
+    // elo to 0 here would cause setElo(0) to wipe their real data.
+    if (!playerMap.has(userId)) {
+      console.warn(`[Rank Sync] Skipping ${userId}: no MongoDB entry found, won't reset ELO.`);
+      continue;
+    }
+
+    const elo = playerMap.get(userId);
 
     try {
       const player = await Player.load(member);
