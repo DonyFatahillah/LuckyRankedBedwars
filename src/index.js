@@ -25,7 +25,6 @@
   try {
     await connectDB();
     // Run maintenance tasks in background
-    syncVerifiedUsers().catch(console.error);
     auditUsers().catch(console.error);
 
     ({ loadLogs } = require('./utils/matchLogger'));
@@ -131,6 +130,7 @@
         await runCleanup(client, members);
         await syncRanks(client, members);  
         await syncPremium(client, members);
+        await syncVerifiedUsers(client, members);
         await autoConfirmPendingMatches(client);  
         console.log(`✅ Registered slash commands to guild: ${guild.name}`);
       } else {
