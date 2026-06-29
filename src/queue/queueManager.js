@@ -106,26 +106,42 @@ async function requestOnlineChecks(members, force = false) {
 
 async function waitForOnlineChecks(members, logPrefix) {
   const deadline = Date.now() + ONLINE_CHECK_TIMEOUT_MS;
-  let statuses = await getOnlineStatuses(members);
+  let pendingMembers = [...members];
+  const finalStatuses = [];
 
-  while (hasPendingOnlineCheck(statuses) && Date.now() < deadline) {
-    const pending = statuses
-      .filter(({ data }) => !data || data.status === 'check')
-      .map(({ member }) => `${member.displayName} (${member.id})`)
-      .join(', ');
+  let lastPendingStr = "";
 
-    console.log(`[${logPrefix}] Waiting for Redis online check: ${pending}`);
-    await sleep(ONLINE_CHECK_INTERVAL_MS);
-    statuses = await getOnlineStatuses(members);
+  while (pendingMembers.length > 0 && Date.now() < deadline) {
+    const currentStatuses = await getOnlineStatuses(pendingMembers);
+    const stillPending = [];
+    
+    currentStatuses.forEach(({ member, data }) => {
+      if (!data || data.status === 'check') {
+        stillPending.push(member);
+      } else {
+        finalStatuses.push({ member, data });
+      }
+    });
+
+    pendingMembers = stillPending;
+
+    if (pendingMembers.length > 0) {
+      const pendingNames = pendingMembers.map(m => `${m.displayName} (${m.id})`).join(', ');
+      if (pendingNames !== lastPendingStr) {
+        console.log(`[${logPrefix}] Waiting for Redis online check: ${pendingNames}`);
+        lastPendingStr = pendingNames;
+      }
+      await sleep(ONLINE_CHECK_INTERVAL_MS);
+    }
   }
 
-  const unresolved = statuses.filter(({ data }) => !data || data.status === 'check');
-  if (unresolved.length > 0) {
+  if (pendingMembers.length > 0) {
+    const unresolved = pendingMembers.map(member => ({ member }));
     console.log(`[${logPrefix}] Redis online check timed out for: ${formatMembers(unresolved)}`);
     return false;
   }
 
-  const offline = statuses.filter(({ data }) => data.status !== 'online');
+  const offline = finalStatuses.filter(({ data }) => data.status !== 'online');
   if (offline.length > 0) {
     console.log(`[${logPrefix}] Queue blocked by non-online players: ${formatStatusMembers(offline)}`);
     return false;
