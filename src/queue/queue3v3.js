@@ -29,32 +29,20 @@ module.exports = {
       const selectedPlayers = eligiblePlayers.slice(0, this.expectedCount);
 
       // Create the match
-      await queueManager.createMatch(guild, selectedPlayers, 3, { 
+      const captains = await queueManager.createMatch(guild, selectedPlayers, 3, { 
         isPartyMatch: true,
         eloQueue: eloQueue
       });
 
-      // Split into teams
-      const team1 = selectedPlayers.slice(0, 3);
-      const team2 = selectedPlayers.slice(3, 6);
-
-      // Find captains by highest ELO
-      const [team1Captain, team2Captain] = await Promise.all([
-        findTeamCaptain(team1),
-        findTeamCaptain(team2)
-      ]);
-
-      console.log(`[Queue3v3] Team 1 Captain: ${team1Captain.member.displayName} (${team1Captain.elo})`);
-      console.log(`[Queue3v3] Team 2 Captain: ${team2Captain.member.displayName} (${team2Captain.elo})`);
+      if (captains && captains.length === 2) {
+        const team1Captain = await Player.load(captains[0]);
+        const team2Captain = await Player.load(captains[1]);
+        console.log(`[Queue3v3] Team 1 Captain: ${team1Captain.member.displayName} (${team1Captain.elo})`);
+        console.log(`[Queue3v3] Team 2 Captain: ${team2Captain.member.displayName} (${team2Captain.elo})`);
+      }
 
     } catch (err) {
       console.error('[Queue3v3] Error handling queue:', err);
     }
   }
 };
-
-// Helper: find highest ELO player in team
-async function findTeamCaptain(teamMembers) {
-  const players = await Promise.all(teamMembers.map(m => Player.load(m)));
-  return players.reduce((top, p) => (p.elo > top.elo ? p : top), players[0]);
-}

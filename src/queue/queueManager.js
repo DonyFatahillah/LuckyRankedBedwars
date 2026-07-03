@@ -410,10 +410,21 @@ async function createMatch(guild, players, teamSize, options = {}) {
   const teams = [team1, team2];
   const allSelectedPlayers = [...team1, ...team2];
 
+  const isPremiumQueue = options.eloQueue?.requiredRoleId !== undefined;
+
   const captains = await Promise.all(
     teams.map(async team => {
       const instances = await Promise.all(team.map(m => Player.load(m)));
-      return instances.reduce((top, p) => (p.elo > top.elo ? p : top), instances[0]).member.id;
+      if (isPremiumQueue) {
+        return instances[Math.floor(Math.random() * instances.length)].member.id;
+      } else {
+        const sorted = instances.sort((a, b) => {
+          if (a.isPremium && !b.isPremium) return -1;
+          if (!a.isPremium && b.isPremium) return 1;
+          return b.elo - a.elo;
+        });
+        return sorted[0].member.id;
+      }
     })
   );
 
@@ -598,7 +609,9 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
       await setActiveGame(hex, matchData);
       
-      const teamMentions = teams.map(team => team.map(m => `<@${m.id}>`));
+      const teamMentions = teams.map((team, teamIndex) => 
+        team.map(m => m.id === captains[teamIndex] ? `<@${m.id}> (Captain)` : `<@${m.id}>`)
+      );
       const teamCaptainsMention = captains.map(id => `<@${id}>`);
 
       const embeds = [
@@ -638,6 +651,8 @@ async function createMatch(guild, players, teamSize, options = {}) {
       setTimeout(() => playerLocks.delete(id), 15000);
     });
   }
+
+  return captains;
 }
 
 async function publishMatchData(guild, hex, matchData) {

@@ -26,6 +26,8 @@ function isEligible(message) {
     return name.endsWith('.zip') || name.endsWith('.rar');
   });
 
+  const hasArchiveLink = content.includes('.zip') || content.includes('.rar');
+
   // ✅ ALLOWED CONDITIONS:
   return (
     // 1. Image + MediaFire/Drive link (with or without text)
@@ -36,7 +38,7 @@ function isEligible(message) {
     (hasMediafireLink || hasDriveLink) ||
 
     // 3. Archive files (.zip or .rar) (with or without text)
-    hasArchiveAttachment
+    hasArchiveAttachment || hasArchiveLink
   );
 }
 
