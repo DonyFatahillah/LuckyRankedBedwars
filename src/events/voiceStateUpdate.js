@@ -70,13 +70,14 @@ module.exports = {
       const player = await Player.load(newState.member);
       const username = player.ingameUsername || newState.member.user.username;
       
+      const ign = player.ingameUsername || newState.member.id;
       // Request a fresh check from the Minecraft plugin
-      await publishPlayerOnline(newState.member.id, username, 'check');
+      await publishPlayerOnline(ign, username, 'check');
 
       // Wait a short bit for the plugin to respond via the Redis listener
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      const onlineStatus = await getPlayerOnlineStatus(newState.member.id);
+      const onlineStatus = await getPlayerOnlineStatus(ign);
       const isOnline = onlineStatus && (onlineStatus.status === 'online' || onlineStatus.status === 'check');
 
       if (!isOnline) {

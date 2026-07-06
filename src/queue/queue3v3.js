@@ -35,8 +35,8 @@ module.exports = {
       });
 
       if (captains && captains.length === 2) {
-        const team1Captain = await Player.load(captains[0]);
-        const team2Captain = await Player.load(captains[1]);
+        const team1Captain = await Player.load(await guild.members.fetch(captains[0]));
+        const team2Captain = await Player.load(await guild.members.fetch(captains[1]));
         console.log(`[Queue3v3] Team 1 Captain: ${team1Captain.member.displayName} (${team1Captain.elo})`);
         console.log(`[Queue3v3] Team 2 Captain: ${team2Captain.member.displayName} (${team2Captain.elo})`);
       }
