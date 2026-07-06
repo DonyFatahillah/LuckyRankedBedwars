@@ -92,15 +92,16 @@ function generateHexCode() {
 
 async function requestOnlineChecks(members, force = false) {
   await Promise.all(members.map(async member => {
+    const player = await Player.load(member);
+    const ign = player.ingameUsername || member.id;
     if (!force) {
-      const status = await getPlayerOnlineStatus(member.id);
+      const status = await getPlayerOnlineStatus(ign);
       if (status && (status.status === 'online' || status.status === 'offline' || status.status === 'check')) {
         return;
       }
     }
-    const player = await Player.load(member);
     const username = player.ingameUsername || member.user.username;
-    await publishPlayerOnline(member.id, username, 'check');
+    await publishPlayerOnline(ign, username, 'check');
   }));
 }
 
@@ -192,7 +193,10 @@ async function validateQueueMembers(guild, voiceChannel, queueConfig, options = 
   }
 
   // 3. Collect final statuses and re-validate everything
-  const onlineStatuses = await Promise.all(members.map(m => getPlayerOnlineStatus(m.id)));
+  const onlineStatuses = await Promise.all(members.map(async m => {
+    const p = await Player.load(m);
+    return getPlayerOnlineStatus(p.ingameUsername || m.id);
+  }));
   const memberStatuses = new Map(members.map((m, i) => [m.id, onlineStatuses[i]]));
 
 
@@ -234,10 +238,13 @@ async function validateQueueMembers(guild, voiceChannel, queueConfig, options = 
 }
 
 async function getOnlineStatuses(members) {
-  return Promise.all(members.map(async member => ({
-    member,
-    data: await getPlayerOnlineStatus(member.id)
-  })));
+  return Promise.all(members.map(async member => {
+    const player = await Player.load(member);
+    return {
+      member,
+      data: await getPlayerOnlineStatus(player.ingameUsername || member.id)
+    };
+  }));
 }
 
 function hasPendingOnlineCheck(statuses) {
@@ -264,7 +271,10 @@ async function getEligibleGroups(members, targetCount, maxTeamSize = 4) {
   const playerInstances = await Promise.all(members.map(m => Player.load(m)));
   const memberToPlayer = new Map(playerInstances.map(p => [p.id, p]));
   
-  const onlineStatuses = await Promise.all(members.map(m => getPlayerOnlineStatus(m.id)));
+  const onlineStatuses = await Promise.all(members.map(async m => {
+    const p = await Player.load(m);
+    return getPlayerOnlineStatus(p.ingameUsername || m.id);
+  }));
   const memberToOnline = new Map(members.map((m, i) => [m.id, onlineStatuses[i]?.status === 'online']));
 
   const validMembers = members.filter(member => {
