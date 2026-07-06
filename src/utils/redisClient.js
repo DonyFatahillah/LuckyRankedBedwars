@@ -74,7 +74,9 @@ async function publishPlayerOnline(userId, username, status) {
   try {
     const data = { id: userId, username, status };
     const payload = JSON.stringify(data);
-    await redis.set(getPlayerStatusKey(userId), payload, 'EX', PLAYER_STATUS_TTL_SECONDS);
+    if (status !== 'check') {
+      await redis.set(getPlayerStatusKey(userId), payload, 'EX', PLAYER_STATUS_TTL_SECONDS);
+    }
     await redis.publish(channel, payload);
     console.log(`[Redis] Player ${username} (${userId}) status "${status}" published to ${channel}`);
   } catch (err) {
@@ -133,12 +135,13 @@ function setupResultListener(client) {
       
       else if (chan === onlineChannel) {
         console.log(`[Redis-Sub] Received online update:`, data);
+        
+        // Ignore our own requests from being cached or processed further
+        if (data.status === 'check') return;
+
         if (data.id && data.status) {
           await redis.set(getPlayerStatusKey(data.id), message, 'EX', PLAYER_STATUS_TTL_SECONDS);
         }
-
-        // Ignore our own requests (if we send "check")
-        if (data.status === 'check') return;
 
         let displayName = data.username;
         if (data.id) {
