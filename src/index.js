@@ -143,12 +143,12 @@
         type: ActivityType.Watching,
       });
 
+      await setupResultListener(client);
+      await setupAllstarsListener(client);
+
       // Task runner
       const maintenanceTask = require('./tasks/maintenance');
       await maintenanceTask.execute(client);
-
-      setupResultListener(client);
-      setupAllstarsListener(client);
 
       await startQueuePolling(client);
 

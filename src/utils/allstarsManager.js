@@ -5,19 +5,13 @@ const Player = require('../models/Player');
  * Sets up the Redis listener for Allstars tournament checks.
  * @param {import('discord.js').Client} client 
  */
-function setupAllstarsListener(client) {
+async function setupAllstarsListener(client) {
     const CHECK_CHANNEL = 'allstars.tournament.check';
     const CONFIRMED_CHANNEL = 'allstars.tournament.confirmed';
     const WAITING_ROOM_ID = process.env.WAITING_ROOM_VOICE_ID;
 
     console.log(`[Allstars] Subscribing to ${CHECK_CHANNEL}...`);
-    redisSub.subscribe(CHECK_CHANNEL, (err) => {
-        if (err) {
-            console.error(`[Allstars] Failed to subscribe to ${CHECK_CHANNEL}:`, err);
-        } else {
-            console.log(`[Allstars] Successfully subscribed to ${CHECK_CHANNEL}`);
-        }
-    });
+    await redisSub.subscribe(CHECK_CHANNEL);
 
     redisSub.on('message', async (channel, message) => {
         if (channel !== CHECK_CHANNEL) return;

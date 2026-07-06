@@ -104,13 +104,13 @@ const ALLSTARS_VOICE_IDS = [
 
 const onlineBuffer = new Map();
 
-function setupResultListener(client) {
+async function setupResultListener(client) {
   const resultsChannel = process.env.REDIS_RESULTS_CHANNEL || 'minecraft.results';
   const onlineChannel = 'player.online';
   const voidChannel = 'minecraft.matches.void';
   
   console.log(`[Redis-Sub] Subscribing to ${resultsChannel}, ${voidChannel}, and ${onlineChannel}...`);
-  redisSub.subscribe(resultsChannel, onlineChannel);
+  await redisSub.subscribe(resultsChannel, onlineChannel, voidChannel);
 
   redisSub.on('message', async (chan, message) => {
     try {
