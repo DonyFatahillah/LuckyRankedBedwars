@@ -415,16 +415,33 @@ async function createMatch(guild, players, teamSize, options = {}) {
   const captains = await Promise.all(
     teams.map(async team => {
       const instances = await Promise.all(team.map(m => Player.load(m)));
-      if (isPremiumQueue) {
-        return instances[Math.floor(Math.random() * instances.length)].member.id;
-      } else {
-        const sorted = instances.sort((a, b) => {
-          if (a.isPremium && !b.isPremium) return -1;
-          if (!a.isPremium && b.isPremium) return 1;
-          return b.elo - a.elo;
-        });
-        return sorted[0].member.id;
-      }
+      
+      const getPremiumLevel = (member) => {
+        if (process.env.PREMIUM_ROLE_ID && member.roles.cache.has(process.env.PREMIUM_ROLE_ID)) return 4;
+        if (process.env.PUGS_ROLE_ID && member.roles.cache.has(process.env.PUGS_ROLE_ID)) return 3;
+        if (process.env.PUPS_ROLE_ID && member.roles.cache.has(process.env.PUPS_ROLE_ID)) return 2;
+        if (process.env.PITS_ROLE_ID && member.roles.cache.has(process.env.PITS_ROLE_ID)) return 1;
+        return 0;
+      };
+
+      const shuffled = shuffle([...instances]);
+      const sorted = shuffled.sort((a, b) => {
+        const aLevel = getPremiumLevel(a.member);
+        const bLevel = getPremiumLevel(b.member);
+        
+        if (aLevel !== bLevel) {
+          return bLevel - aLevel;
+        }
+        
+        if (a.isPremium && !b.isPremium) return -1;
+        if (!a.isPremium && b.isPremium) return 1;
+        
+        if (isPremiumQueue) return 0;
+        
+        return b.elo - a.elo;
+      });
+      
+      return sorted[0].member.id;
     })
   );
 
