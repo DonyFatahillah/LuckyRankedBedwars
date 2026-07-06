@@ -544,8 +544,8 @@ async function createMatch(guild, players, teamSize, options = {}) {
           description: `Captain <@${firstPickCaptain}>, it's your turn to pick a player!\nUse the dropdown below to choose from the pool.`,
           fields: [
             { name: "Pool", value: unpicked.map(id => `<@${id}>`).join('\n') || "None", inline: true },
-            { name: "Team 1", value: `<@${captains[0]}>`, inline: true },
-            { name: "Team 2", value: `<@${captains[1]}>`, inline: true }
+            { name: "Team 1", value: `<@${captains[0]}> (Captain)`, inline: true },
+            { name: "Team 2", value: `<@${captains[1]}> (Captain)`, inline: true }
           ],
           color: 0xffff00
         };

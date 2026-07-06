@@ -84,8 +84,8 @@ async function handlePicking(interaction) {
       description: `Captain <@${user.id}> picked <@${pickedUserId}>!\n\nIt is now Captain <@${game.pickingTurn}>'s turn to pick.`,
       fields: [
         { name: "Pool", value: game.unpickedPlayers.map(id => `<@${id}>`).join('\n') || "None", inline: true },
-        { name: "Team 1", value: game.teamA.map(id => `<@${id}>`).join('\n'), inline: true },
-        { name: "Team 2", value: game.teamB.map(id => `<@${id}>`).join('\n'), inline: true }
+        { name: "Team 1", value: game.teamA.map(id => game.captainIds && game.captainIds[0] === id ? `<@${id}> (Captain)` : `<@${id}>`).join('\n'), inline: true },
+        { name: "Team 2", value: game.teamB.map(id => game.captainIds && game.captainIds[1] === id ? `<@${id}> (Captain)` : `<@${id}>`).join('\n'), inline: true }
       ],
       color: 0xffff00
     };

@@ -27,8 +27,8 @@ async function startMapVoting(guild, channel, game) {
         title: "🗺️ Map Selection",
         description: "Teams are finalized! Now, everyone vote for the map you want to play.\nYou have 20 seconds.",
         fields: [
-          { name: "Team 1", value: game.teamA.map(id => `<@${id}>`).join('\n'), inline: true },
-          { name: "Team 2", value: game.teamB.map(id => `<@${id}>`).join('\n'), inline: true },
+          { name: "Team 1", value: game.teamA.map(id => game.captainIds && game.captainIds[0] === id ? `<@${id}> (Captain)` : `<@${id}>`).join('\n'), inline: true },
+          { name: "Team 2", value: game.teamB.map(id => game.captainIds && game.captainIds[1] === id ? `<@${id}> (Captain)` : `<@${id}>`).join('\n'), inline: true },
           { 
             name: "Maps", 
             value: maps.map((m, i) => {
@@ -134,7 +134,7 @@ async function finalizeMatch(guild, channel, game) {
     const waitingRoom = guild.channels.cache.find(c => c.parentId === game.categoryId && (c.name.startsWith('🕒 Waiting Room') || c.name.includes('Waiting Room')));
     if (waitingRoom) await waitingRoom.delete().catch(() => {});
 
-    const teamMentions = teams.map(team => team.map(m => `<@${m.id}>`));
+    const teamMentions = teams.map((team, i) => team.map(m => finalGame.captainIds && finalGame.captainIds[i] === m.id ? `<@${m.id}> (Captain)` : `<@${m.id}>`));
     const finalEmbed = {
       title: `Match #${game.gameId} Ready!`,
       description:
