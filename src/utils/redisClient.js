@@ -102,6 +102,8 @@ const ALLSTARS_VOICE_IDS = [
   process.env.TEAM_4_VOICE_ID,
 ].filter(Boolean);
 
+const onlineBuffer = new Map();
+
 function setupResultListener(client) {
   const resultsChannel = process.env.REDIS_RESULTS_CHANNEL || 'minecraft.results';
   const onlineChannel = 'player.online';
@@ -138,13 +140,28 @@ function setupResultListener(client) {
         
         // Ignore our own requests from being cached or processed further
         if (data.status === 'check') return;
+        if (!data.id) return;
 
-        if (data.id && data.status) {
-          await redis.set(getPlayerStatusKey(data.id), message, 'EX', PLAYER_STATUS_TTL_SECONDS);
+        if (!onlineBuffer.has(data.id)) {
+          onlineBuffer.set(data.id, { statuses: [], timer: null });
         }
+        
+        const buffer = onlineBuffer.get(data.id);
+        buffer.statuses.push(data.status);
 
-        let displayName = data.username;
-        if (data.id) {
+        if (buffer.timer) clearTimeout(buffer.timer);
+
+        buffer.timer = setTimeout(async () => {
+          const isOnline = buffer.statuses.includes('online');
+          const finalStatus = isOnline ? 'online' : 'offline';
+          const finalData = { ...data, status: finalStatus };
+          
+          onlineBuffer.delete(data.id);
+
+          const finalMessage = JSON.stringify(finalData);
+          await redis.set(getPlayerStatusKey(data.id), finalMessage, 'EX', PLAYER_STATUS_TTL_SECONDS);
+
+          let displayName = finalData.username;
           try {
             const cached = await getPlayerCache(data.id);
             if (cached && cached.ingameUsername) {
@@ -159,35 +176,35 @@ function setupResultListener(client) {
           } catch (err) {
             console.error('[Redis-Sub] Error fetching player ingameUsername:', err);
           }
-        }
 
-        console.log(`[Redis-Sub] Player ${displayName} is ${data.status} (from plugin)`);
-        
-        if (data.status === 'offline') {
-          try {
-            const guildId = process.env.GUILD_ID;
-            const waitingRoomId = process.env.WAITING_ROOM_VOICE_ID;
-            
-            if (!guildId || !waitingRoomId || !data.id) return;
+          console.log(`[Redis-Sub] Player ${displayName} final status is ${finalStatus} (buffered)`);
+          
+          if (finalStatus === 'offline') {
+            try {
+              const guildId = process.env.GUILD_ID;
+              const waitingRoomId = process.env.WAITING_ROOM_VOICE_ID;
+              
+              if (!guildId || !waitingRoomId) return;
 
-            const guild = await client.guilds.fetch(guildId);
-            if (!guild) return;
+              const guild = await client.guilds.fetch(guildId);
+              if (!guild) return;
 
-            // Instantly fetch the specific member by ID - No more rate-limiting search!
-            const member = await guild.members.fetch(data.id).catch(() => null);
+              // Instantly fetch the specific member by ID - No more rate-limiting search!
+              const member = await guild.members.fetch(data.id).catch(() => null);
 
-            if (member && member.voice.channelId && member.voice.channelId !== waitingRoomId) {
-              const waitingRoom = await guild.channels.fetch(waitingRoomId);
-              if (waitingRoom) {
-                await member.voice.setChannel(waitingRoom);
-                await member.send(`⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to queue.`).catch(() => {});
-                console.log(`[Redis-Sub] Moved ${member.displayName} to waiting room (Offline)`);
+              if (member && member.voice.channelId && member.voice.channelId !== waitingRoomId) {
+                const waitingRoom = await guild.channels.fetch(waitingRoomId);
+                if (waitingRoom) {
+                  await member.voice.setChannel(waitingRoom);
+                  await member.send(`⚠️ You were moved to the waiting room because you are not online in-game. Please join the server to queue.`).catch(() => {});
+                  console.log(`[Redis-Sub] Moved ${member.displayName} to waiting room (Offline)`);
+                }
               }
+            } catch (err) {
+              console.error('[Redis-Sub] Error moving offline player:', err);
             }
-          } catch (err) {
-            console.error('[Redis-Sub] Error moving offline player:', err);
           }
-        }
+        }, 1000);
       }
 
     } catch (err) {
