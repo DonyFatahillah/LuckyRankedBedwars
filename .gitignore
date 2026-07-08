@@ -5,3 +5,5 @@ dist/
 npm-debug.log*
 .npm/
 .cache/
+assets/
+data/
