@@ -62,8 +62,8 @@ module.exports = [
     maxElo: Infinity,
     voiceChannelId: process.env.QUEUE_PREMIUM_VOICE_ID,
     requiredRoleId: [process.env.PREMIUM_ROLE_ID, process.env.PUGS_ROLE_ID, process.env.PITS_ROLE_ID, process.env.PUPS_ROLE_ID, process.env.STAFF_ROLE_ID],
-    isPlayerPicking: false,
-    isArenaPicking: false
+    isPlayerPicking: true,
+    isArenaPicking: true
   },
   ];
 
