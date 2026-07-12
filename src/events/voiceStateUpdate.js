@@ -120,8 +120,13 @@ module.exports = {
       const isStandardQueue = ALL_QUEUE_IDS.includes(newChannelId);
 
       if (eloQueue || isStandardQueue) {
-        // Validation will handle requesting checks
-        console.log(`[QueueJoin] ${newState.member.displayName} joined queue ${newChannelId}`);
+        // Request a check ONLY for the person who joined
+        const player = await Player.load(newState.member);
+        const username = player.ingameUsername || newState.member.user.username;
+        const ign = player.ingameUsername || newState.member.id;
+        await publishPlayerOnline(ign, username, 'check');
+
+        console.log(`[QueueJoin] ${newState.member.displayName} joined queue ${newChannelId}. Requested fresh check.`);
       }
 
       if (eloQueue) {
@@ -147,7 +152,7 @@ async function handleEloQueue(newState, eloQueue, party = null) {
 
   try {
     // Perform thorough validation of ALL members in the queue
-    const validated = await validateQueueMembers(newState.guild, voiceChannel, eloQueue, { forceCheck: true, wait: true });
+    const validated = await validateQueueMembers(newState.guild, voiceChannel, eloQueue, { forceCheck: false, wait: true });
 
     const expectedCount =
       eloQueue.type === '3v3' ? 6 :
@@ -186,7 +191,7 @@ async function handleStandardQueue(newState, party = null) {
   try {
     // Perform thorough validation of ALL members in the queue
     // Standard queues don't have min/max ELO but still need online check, banned check, etc.
-    const validated = await validateQueueMembers(newState.guild, voiceChannel, { type: queue.expectedCount + 'v' + queue.expectedCount }, { forceCheck: true, wait: true });
+    const validated = await validateQueueMembers(newState.guild, voiceChannel, { type: queue.expectedCount + 'v' + queue.expectedCount }, { forceCheck: false, wait: true });
 
     if (validated.length < queue.expectedCount) return;
 

@@ -116,6 +116,14 @@
 
       const commandsArray = client.commands.map((cmd) => cmd.data.toJSON());
 
+      client.user.setActivity({
+        name: 'LuckyNetwork Ranked Bedwars',
+        type: ActivityType.Watching,
+      });
+
+      await setupResultListener(client);
+      await setupAllstarsListener(client);
+
       if (process.env.GUILD_ID) {
         const guild = await client.guilds.fetch(process.env.GUILD_ID); 
         await guild.commands.set(commandsArray);
@@ -127,24 +135,18 @@
         await mapPicker.loadMapList();
         await cleanInvalidMessages(client);  
           
-        await runCleanup(client, members);
-        await syncRanks(client, members);  
-        await syncPremium(client, members);
-        await syncVerifiedUsers(client, members);
-        await autoConfirmPendingMatches(client);  
+        // Run sync tasks asynchronously in the background
+        runCleanup(client, members).catch(err => console.error('[Cleanup Error]', err));
+        syncRanks(client, members).catch(err => console.error('[SyncRanks Error]', err));  
+        syncPremium(client, members).catch(err => console.error('[SyncPremium Error]', err));
+        syncVerifiedUsers(client, members).catch(err => console.error('[SyncVerifiedUsers Error]', err));
+        autoConfirmPendingMatches(client).catch(err => console.error('[AutoConfirm Error]', err));  
+        
         console.log(`✅ Registered slash commands to guild: ${guild.name}`);
       } else {
         await client.application.commands.set(commandsArray);
         console.log('✅ Registered global slash commands');
       }
-
-      client.user.setActivity({
-        name: 'LuckyNetwork Ranked Bedwars',
-        type: ActivityType.Watching,
-      });
-
-      await setupResultListener(client);
-      await setupAllstarsListener(client);
 
       // Task runner
       const maintenanceTask = require('./tasks/maintenance');
