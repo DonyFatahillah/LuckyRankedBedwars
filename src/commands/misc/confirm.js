@@ -142,7 +142,6 @@ module.exports = {
           oldElo,
           newElo: player.elo
         });
-        });
       }
 
       const finalTopKillerDisplayName = topKillerDisplayNames.join(', ');
