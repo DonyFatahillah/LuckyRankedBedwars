@@ -103,7 +103,7 @@ async function generateScoreImage(gameId, winningTeam, results, mvp, winBedbreak
       const newRank = getRankByElo(player.newElo).name;
       const rankText = (oldRank !== newRank) ? `${oldRank} ➝ ${newRank}` : newRank;
       
-      ctx.font = 'bold 25px PlusJakartaSans, sans-serif';
+      ctx.font = 'bold 30px PlusJakartaSans, sans-serif';
       ctx.textAlign = 'center';
       
       // X coordinates for the two columns (centered exactly under the headers)
