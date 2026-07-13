@@ -190,11 +190,17 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
         console.error(`[autoConfirmMatch] Failed to generate score image for game ${gameId}:`, imgErr);
       }
 
-      await scoringChannel.send({
-        content: allPlayerIds.map(id => `<@${id}>`).join(' '),
-        embeds: [embedData],
-        files: attachment ? [attachment] : []
-      });
+      if (attachment) {
+        await scoringChannel.send({
+          content: allPlayerIds.map(id => `<@${id}>`).join(' '),
+          files: [attachment]
+        });
+      } else {
+        await scoringChannel.send({
+          content: allPlayerIds.map(id => `<@${id}>`).join(' '),
+          embeds: [embedData]
+        });
+      }
     } catch (err) {
       console.error(`[autoConfirmMatch] Failed to send scoring summary: ${err.message}`);
     }
