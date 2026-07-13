@@ -134,6 +134,8 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
 
       results.push({
         username: player.username,
+        nickname: player.username,
+        name: player.username,
         result: isWinner ? '🏆 Win' : '❌ Loss',
         oldElo,
         newElo: player.elo
@@ -160,9 +162,7 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
           return `❌ **${p.username}** — ELO: \`${p.oldElo}\` ➝ \`${p.newElo}\` (-${change})`;
         }).join('\n');
 
-      await scoringChannel.send({
-        content: allPlayerIds.map(id => `<@${id}>`).join(' '),
-        embeds: [{
+      const embedData = {
           title: `📊 Game #${gameId} — ELO Summary`,
           description: [
             `⭐ **MVP:** **${mvpUsernames.length > 0 ? mvpUsernames.join(', ') : (Array.isArray(topKiller) ? topKiller.join(', ') : topKiller)}**`,
@@ -176,7 +176,24 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
           ].filter(Boolean).join('\n'),
           color: 0x3498db,
           timestamp: new Date()
-        }]
+      };
+
+      let attachment = null;
+      try {
+        const { generateScoreImage } = require('./scoreImage');
+        const finalMvps = mvpUsernames.length > 0 ? mvpUsernames : (Array.isArray(topKiller) ? topKiller : [topKiller]);
+        const finalWinBreakers = winBedUsername ? [winBedUsername] : [];
+        const finalLoseBreakers = (loseBedUsername && loseBedUsername !== 'null') ? [loseBedUsername] : [];
+        
+        attachment = await generateScoreImage(gameId, winnerTeam, results, finalMvps, finalWinBreakers, finalLoseBreakers);
+      } catch (imgErr) {
+        console.error(`[autoConfirmMatch] Failed to generate score image for game ${gameId}:`, imgErr);
+      }
+
+      await scoringChannel.send({
+        content: allPlayerIds.map(id => `<@${id}>`).join(' '),
+        embeds: [embedData],
+        files: attachment ? [attachment] : []
       });
     } catch (err) {
       console.error(`[autoConfirmMatch] Failed to send scoring summary: ${err.message}`);
