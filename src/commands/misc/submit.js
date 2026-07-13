@@ -101,7 +101,8 @@ module.exports = {
 
       let winBedbreakerMention = winBedbreakerUsername;
       let loseBedbreakerMention = loseBedbreakerUsername || null;
-      let topkillerMention = topkillerUsername;
+      let topkillerUsernames = topkillerUsername.split(',').map(s => s.trim().toLowerCase());
+      let topkillerMentions = topkillerUsername.split(',').map(s => s.trim());
       let winTeam = null;
 
       for (const member of members.filter(Boolean)) {
@@ -115,17 +116,20 @@ module.exports = {
         if (loseBedbreakerUsername && username === loseBedbreakerUsername.toLowerCase()) {
           loseBedbreakerMention = `<@${member.id}>`;
         }
-        if (username === topkillerUsername.toLowerCase()) {
-          topkillerMention = `<@${member.id}>`;
+        const tkIndex = topkillerUsernames.indexOf(username);
+        if (tkIndex !== -1) {
+          topkillerMentions[tkIndex] = `<@${member.id}>`;
         }
       }
+
+      const finalTopkillerMention = topkillerMentions.join(', ');
 
       let message = `📤 Match **#${gameId}** result submitted by <@${userId}>\n`;
       message += `🔨 **Winning Bedbreaker:** ${winBedbreakerMention}\n`;
       if (loseBedbreakerMention) {
         message += `🔨 **Losing Bedbreaker:** ${loseBedbreakerMention}\n`;
       }
-      message += `⚔️ **MVP:** ${topkillerMention} (${killamount} kills)\n`;
+      message += `⚔️ **MVP:** ${finalTopkillerMention} (${killamount} kills)\n`;
       message += `📝 **Status:** ${status}\n\n`;
       message += `🟥 **Team 1:** ${team1Mentions}\n`;
       message += `🟦 **Team 2:** ${team2Mentions}\n`;
@@ -139,7 +143,10 @@ module.exports = {
 
       updateMatchDetails(gameId, {
         submitted: true,
-        topKiller: topkillerMention,
+        team1: matchData.teams[0],
+        team2: matchData.teams[1],
+        topKiller: finalTopkillerMention,
+        topKillerRaw: topkillerUsername.split(',').map(s => s.trim()),
         kills: killamount,
         winBedbreaker: winBedbreakerMention,
         loseBedbreaker: loseBedbreakerMention,
@@ -149,7 +156,7 @@ module.exports = {
       await editLogEmbed(interaction.client, interaction.guild.id, gameId, staffChannelId, 'pending', {
         bedbreaker: winBedbreakerMention,
         loseBedbreaker: loseBedbreakerMention,
-        topKiller: topkillerMention,
+        topKiller: finalTopkillerMention,
         kills: killamount,
       });
 
@@ -159,7 +166,7 @@ module.exports = {
             winner: winTeam,
             winBedbreaker: winBedbreakerUsername,
             loseBedbreaker: loseBedbreakerUsername,
-            topKiller: topkillerUsername
+            topKiller: topkillerUsername.split(',').map(s => s.trim())
           });
         } catch (e) {
           console.error(`[Submit] autoConfirmMatch failed: ${e.stack}`);

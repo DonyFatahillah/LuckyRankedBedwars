@@ -95,7 +95,7 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
 
   // --- ELO and stat updates (Parallel) ---
   const results = [];
-  let mvpUsername = topKiller;
+  let mvpUsernames = [];
   let winBedUsername = winBedbreaker;
   let loseBedUsername = loseBedbreaker;
 
@@ -110,11 +110,13 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
       const isWinner = winners.includes(id);
       const uname = player.username.toLowerCase();
 
-      const isTopKiller = uname === topKiller?.toLowerCase();
+      const isTopKiller = Array.isArray(topKiller) 
+        ? topKiller.map(tk => tk?.toLowerCase()).includes(uname)
+        : uname === topKiller?.toLowerCase();
       const isWinBreaker = uname === winBedbreaker?.toLowerCase();
       const isLoseBreaker = loseBedbreaker && uname === loseBedbreaker?.toLowerCase();
 
-      if (isTopKiller) mvpUsername = player.username;
+      if (isTopKiller) mvpUsernames.push(player.username);
       if (isWinBreaker) winBedUsername = player.username;
       if (isLoseBreaker) loseBedUsername = player.username;
 
@@ -163,7 +165,7 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
         embeds: [{
           title: `📊 Game #${gameId} — ELO Summary`,
           description: [
-            `⭐ **MVP:** **${mvpUsername}**`,
+            `⭐ **MVP:** **${mvpUsernames.length > 0 ? mvpUsernames.join(', ') : (Array.isArray(topKiller) ? topKiller.join(', ') : topKiller)}**`,
             `🔨 **Winning Bedbreaker:** **${winBedUsername}**`,
             loseBedUsername && loseBedUsername !== 'null' ? `🔨 **Losing Bedbreaker:** **${loseBedUsername}**` : null,
             `🏅 **Winner:** **${winnerTeam.toUpperCase()}**`,
@@ -220,9 +222,10 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   const logs = getLogs();
   const logEntry = logs[gameId];
   const confirmedBy = '[AUTO-CONFIRM]';
+  const finalMvpStr = mvpUsernames.length > 0 ? mvpUsernames.join(', ') : (Array.isArray(topKiller) ? topKiller.join(', ') : topKiller);
   const logUpdateOptions = {
-    mvp: mvpUsername,
-    topKiller: mvpUsername,
+    mvp: finalMvpStr,
+    topKiller: finalMvpStr,
     bedbreaker: winBedUsername,
     confirmedBy
   };

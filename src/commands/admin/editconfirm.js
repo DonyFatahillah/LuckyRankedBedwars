@@ -58,7 +58,7 @@ module.exports = {
 
     const gameId = interaction.options.getString('gameid').toUpperCase();
     const winningTeam = interaction.options.getString('winner');
-    const mvp = interaction.options.getString('mvp');
+    const mvp = interaction.options.getString('mvp')?.split(',').map(s => s.trim()).join(', ');
     const winBedbreaker = interaction.options.getString('winbedbreaker');
     const loseBedbreaker = interaction.options.getString('losebedbreaker');
 

@@ -65,9 +65,16 @@ module.exports = async function autoConfirmPendingMatches(client) {
     }
 
     // Resolve topKiller
-    let topKillerName = log.topKiller || log.winBedbreaker;
-    const topEntry = findPlayerByIdentifier(topKillerName);
-    if (topEntry) topKillerName = topEntry.member.displayName;
+    let topKillerName = log.topKillerRaw || log.topKiller || log.winBedbreaker;
+    if (Array.isArray(topKillerName)) {
+      topKillerName = topKillerName.map(tk => {
+        const entry = findPlayerByIdentifier(tk);
+        return entry ? entry.member.displayName : tk;
+      });
+    } else {
+      const topEntry = findPlayerByIdentifier(topKillerName);
+      if (topEntry) topKillerName = topEntry.member.displayName;
+    }
 
     // Resolve loseBedbreaker
     let loseBedDisplay = null;

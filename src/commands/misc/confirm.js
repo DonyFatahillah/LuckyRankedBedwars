@@ -70,7 +70,8 @@ module.exports = {
 
     const gameId = interaction.options.getString('gameid').toUpperCase();
     const winningTeam = interaction.options.getString('winner');
-    const topKillerUsername = interaction.options.getString('mvp')?.toLowerCase();
+    const topKillerUsernameRaw = interaction.options.getString('mvp');
+    const topKillerUsernames = topKillerUsernameRaw ? topKillerUsernameRaw.split(',').map(s => s.trim().toLowerCase()) : [];
     const winBedbreakerUsername = interaction.options.getString('winbedbreaker')?.toLowerCase();
     const loseBedbreakerUsername = interaction.options.getString('losebedbreaker')?.toLowerCase();
 
@@ -97,7 +98,7 @@ module.exports = {
       const losers = winningTeam === 'team1' ? match.teams[1] : match.teams[0];
       const allPlayerIds = [...winners, ...losers];
 
-      let topKillerDisplayName = topKillerUsername;
+      let topKillerDisplayNames = topKillerUsernameRaw ? topKillerUsernameRaw.split(',').map(s => s.trim()) : [];
       let winBedbreakerDisplayName = winBedbreakerUsername;
       let loseBedbreakerDisplayName = loseBedbreakerUsername || null;
 
@@ -111,11 +112,14 @@ module.exports = {
         const oldElo = player.elo;
 
         const isWinner = winners.includes(playerId);
-        const isTopKiller = player.username.toLowerCase() === topKillerUsername;
+        const isTopKiller = topKillerUsernames.includes(player.username.toLowerCase());
         const isWinBreaker = player.username.toLowerCase() === winBedbreakerUsername;
         const isLoseBreaker = loseBedbreakerUsername && player.username.toLowerCase() === loseBedbreakerUsername;
 
-        if (isTopKiller) topKillerDisplayName = member.displayName;
+        if (isTopKiller) {
+          const tkIndex = topKillerUsernames.indexOf(player.username.toLowerCase());
+          if (tkIndex !== -1) topKillerDisplayNames[tkIndex] = member.displayName;
+        }
         if (isWinBreaker) winBedbreakerDisplayName = member.displayName;
         if (isLoseBreaker) loseBedbreakerDisplayName = member.displayName;
 
@@ -138,7 +142,10 @@ module.exports = {
           oldElo,
           newElo: player.elo
         });
+        });
       }
+
+      const finalTopKillerDisplayName = topKillerDisplayNames.join(', ');
 
       if (textChannel) {
         await textChannel.send({
@@ -147,7 +154,7 @@ module.exports = {
               .setTitle(`🏆 Match #${gameId} Result`)
               .setDescription([
                 `**${winningTeam === 'team1' ? 'Team 1' : 'Team 2'}** has won the match!`,
-                `⭐ **Top Killer:** ${topKillerDisplayName}`,
+                `⭐ **Top Killer:** ${finalTopKillerDisplayName}`,
                 `🔨 **Winning Bedbreaker:** ${winBedbreakerDisplayName}`,
                 loseBedbreakerDisplayName ? `🔨 **Losing Bedbreaker:** ${loseBedbreakerDisplayName}` : null
               ].filter(Boolean).join('\n'))
@@ -168,7 +175,7 @@ module.exports = {
         }).join('\n');
 
         const description = [
-          `⭐ **MVP:** **${topKillerDisplayName}**`,
+          `⭐ **MVP:** **${finalTopKillerDisplayName}**`,
           `🔨 **Winning Bedbreaker:** **${winBedbreakerDisplayName}**`,
           loseBedbreakerDisplayName ? `🔨 **Losing Bedbreaker:** **${loseBedbreakerDisplayName}**` : null,
           `🏅 **Winner:** **${winningTeam.toUpperCase()}**`,
@@ -219,8 +226,8 @@ module.exports = {
       const confirmedBy = `<@${interaction.user.id}>`;
 
       const logUpdateOptions = {
-        mvp: topKillerDisplayName,
-        topKiller: topKillerDisplayName,
+        mvp: finalTopKillerDisplayName,
+        topKiller: finalTopKillerDisplayName,
         bedbreaker: winBedbreakerDisplayName,
         confirmedBy
       };
