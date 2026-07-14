@@ -8,7 +8,7 @@ const { AttachmentBuilder } = require('discord.js');
 const path = require('path');
 const { getRankByElo } = require('./EloRank');
 
-async function generateScoreImage(gameId, winningTeam, results, mvp, winBedbreaker, loseBedbreaker) {
+async function generateScoreImage(gameId, winningTeam, results, mvp, winBedbreaker, loseBedbreaker, mapName = null) {
   let bg;
   let width = 800;
   let height = 600;
@@ -144,7 +144,8 @@ async function generateScoreImage(gameId, winningTeam, results, mvp, winBedbreak
   ctx.font = 'bold 30px PlusJakartaSans, sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText(`Game ${gameId}`, 50, 30);
+  const titleText = mapName ? `Game ${gameId} | ${mapName}` : `Game ${gameId}`;
+  ctx.fillText(titleText, 50, 30);
 
   // Convert to discord attachment
   const buffer = canvas.toBuffer('image/png');

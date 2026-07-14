@@ -185,7 +185,7 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
         const finalWinBreakers = winBedUsername ? [winBedUsername] : [];
         const finalLoseBreakers = (loseBedUsername && loseBedUsername !== 'null') ? [loseBedUsername] : [];
         
-        attachment = await generateScoreImage(gameId, winnerTeam, results, finalMvps, finalWinBreakers, finalLoseBreakers);
+        attachment = await generateScoreImage(gameId, winnerTeam, results, finalMvps, finalWinBreakers, finalLoseBreakers, match.map);
       } catch (imgErr) {
         console.error(`[autoConfirmMatch] Failed to generate score image for game ${gameId}:`, imgErr);
       }
