@@ -97,7 +97,7 @@ async function generateScoreImage(gameId, winningTeam, results, mvp, winBedbreak
 
       // 4. Draw ELO Change
       const eloChange = player.newElo - player.oldElo;
-      const changeText = isWinner ? `(+${eloChange})` : `(${eloChange})`;
+      const changeText = isWinner ? `(+${eloChange})` : `(–${Math.abs(eloChange)})`; // Using en-dash for longer negative symbol
       
       const oldRank = getRankByElo(player.oldElo).name;
       const newRank = getRankByElo(player.newElo).name;
@@ -108,7 +108,7 @@ async function generateScoreImage(gameId, winningTeam, results, mvp, winBedbreak
       
       // X coordinates for the two columns (centered exactly under the headers)
       const rankX = 916; 
-      const eloX = 1184;
+      const eloX = 1160;
       
       // Draw Rank Name in the Rank column
       ctx.font = 'bold 20px PlusJakartaSans, sans-serif'; // Decreased by 10px
@@ -116,20 +116,34 @@ async function generateScoreImage(gameId, winningTeam, results, mvp, winBedbreak
       ctx.fillText(rankText, rankX, nameY);
 
       // Draw Elo numbers in the Elo Change column
-      ctx.font = 'bold 25px PlusJakartaSans, sans-serif'; // Restore original size for Elo
-      if (isWinner) {
-        ctx.fillStyle = '#ffffff';
-        const changeWidth = ctx.measureText(` ${changeText}`).width;
-        ctx.fillText(`${player.oldElo} ➝ ${player.newElo}`, eloX - (changeWidth/2), nameY);
-        ctx.fillStyle = '#55ff55';
-        ctx.fillText(` ${changeText}`, eloX + (ctx.measureText(`${player.oldElo} ➝ ${player.newElo}`).width / 2), nameY);
-      } else {
-        ctx.fillStyle = '#ffffff';
-        const changeWidth = ctx.measureText(` ${changeText}`).width;
-        ctx.fillText(`${player.oldElo} ➝ ${player.newElo}`, eloX - (changeWidth/2), nameY);
-        ctx.fillStyle = '#ff5555';
-        ctx.fillText(` ${changeText}`, eloX + (ctx.measureText(`${player.oldElo} ➝ ${player.newElo}`).width / 2), nameY);
-      }
+      ctx.font = 'bold 26px PlusJakartaSans, sans-serif';
+      
+      const arrowX = 1150;
+      
+      // Draw arrow
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 26px PlusJakartaSans, sans-serif';
+      ctx.fillText('➔', arrowX, nameY);
+      
+      const oldEloX = 1087; // <-- Fixed X coordinate for old Elo
+      const newEloX = 1205; // <-- Fixed X coordinate for new Elo
+      
+      // Draw old elo
+      ctx.textAlign = 'center';
+      ctx.fillText(`${player.oldElo}`, oldEloX, nameY);
+      
+      // Draw new elo
+      ctx.textAlign = 'center';
+      ctx.fillText(`${player.newElo}`, newEloX, nameY);
+      
+      // Draw elo change (+/-)
+      const eloChangeFontSize = 22; // <-- Change this number to configure the (+25) text size
+      ctx.font = `bold ${eloChangeFontSize}px PlusJakartaSans, sans-serif`;
+      ctx.fillStyle = isWinner ? '#55ff55' : '#ff5555';
+      
+      const changeX = 1280; // <-- Fixed X coordinate for the (+/-) number
+      ctx.fillText(`${changeText}`, changeX, nameY);
 
       currentY += rowHeight;
     }
