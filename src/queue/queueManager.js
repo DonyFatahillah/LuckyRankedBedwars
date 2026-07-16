@@ -786,7 +786,6 @@ async function movePlayersToVoiceChannels(guild, teams, voiceChannels) {
   await Promise.all(moveTasks);
 }
 
-const { redis } = require('../utils/redisClient');
 const ActiveGame = require('../models/ActiveGame');
 
 async function setActiveGame(gameId, data) {
