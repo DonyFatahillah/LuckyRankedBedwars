@@ -233,6 +233,10 @@ async function validateQueueMembers(guild, voiceChannel, queueConfig, options = 
       const reason = isBanned ? 'banned' : (isBlacklisted ? 'blacklisted' : (isOffline ? 'offline' : (isEloIneligible ? 'ELO ineligible' : 'party')));
       const player = await Player.load(member);
       const displayName = player.ingameUsername || member.user.username;
+      
+      if (reason === 'offline') {
+         console.log(`[Validation Debug] Kicking ${displayName} for offline. statusData was: ${JSON.stringify(statusData)}`);
+      }
       console.log(`[Validation] Moving ${displayName} to waiting room (${reason}).`);
       await moveIneligiblePlayer(member, reason, queueConfig);
     } else if (!isPending) {
