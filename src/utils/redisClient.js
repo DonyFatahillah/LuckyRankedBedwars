@@ -28,7 +28,7 @@ const PLAYER_STATUS_KEY_PREFIX = 'player.online.status:';
 const PLAYER_STATUS_TTL_SECONDS = 30;
 
 function getPlayerStatusKey(userId) {
-  return `${PLAYER_STATUS_KEY_PREFIX}${userId}`;
+  return `${PLAYER_STATUS_KEY_PREFIX}${userId.toLowerCase()}`;
 }
 
 redis.on('error', (err) => {

@@ -102,7 +102,7 @@ async function requestOnlineChecks(members, force = false) {
     }
     const username = player.ingameUsername || member.user.username;
     // Set cache to 'check' to ensure waitForOnlineChecks actually waits
-    await redis.set(`player.online.status:${ign}`, JSON.stringify({ id: ign, username, status: 'check' }), 'EX', 15);
+    await redis.set(`player.online.status:${ign.toLowerCase()}`, JSON.stringify({ id: ign, username, status: 'check' }), 'EX', 15);
     await publishPlayerOnline(ign, username, 'check');
   }));
 }
@@ -188,7 +188,8 @@ async function validateQueueMembers(guild, voiceChannel, queueConfig, options = 
   
   // 2. Wait for checks if requested, or skip if pending
   if (options.wait) {
-    await waitForOnlineChecks(members, 'Validation');
+    const ok = await waitForOnlineChecks(members, 'Validation');
+    if (!ok) return []; // Abort if online checks timed out
   } else {
     const statuses = await getOnlineStatuses(members);
     if (hasPendingOnlineCheck(statuses)) return []; // Not ready yet, skip this polling iteration
