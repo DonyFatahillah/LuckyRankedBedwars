@@ -25,7 +25,7 @@ try {
 const { logMatch, sendLogToStaffChannel } = require('../utils/matchLogger');
 const Player = require('../models/Player');
 const partySystem = require('../utils/partySystem');
-const { publishMatch, getPlayerOnlineStatus, publishMatchVoid, publishPlayerOnline } = require('../utils/redisClient');
+const { publishMatch, getPlayerOnlineStatus, publishMatchVoid, publishPlayerOnline, redis } = require('../utils/redisClient');
 const { trackJoin, getJoinTime } = require('../utils/voiceJoinTracker');
 const eloQueues = require('../config/eloQueues');
 const ONLINE_CHECK_TIMEOUT_MS = 10000;
@@ -101,6 +101,8 @@ async function requestOnlineChecks(members, force = false) {
       }
     }
     const username = player.ingameUsername || member.user.username;
+    // Set cache to 'check' to ensure waitForOnlineChecks actually waits
+    await redis.set(`player.online.status:${ign}`, JSON.stringify({ id: ign, username, status: 'check' }), 'EX', 15);
     await publishPlayerOnline(ign, username, 'check');
   }));
 }
@@ -227,7 +229,9 @@ async function validateQueueMembers(guild, voiceChannel, queueConfig, options = 
 
     if (isBanned || isBlacklisted || isOffline || isEloIneligible || isPartyIneligible) {
       const reason = isBanned ? 'banned' : (isBlacklisted ? 'blacklisted' : (isOffline ? 'offline' : (isEloIneligible ? 'ELO ineligible' : 'party')));
-      console.log(`[Validation] Moving ${member.user.username} to waiting room (${reason}).`);
+      const player = await Player.load(member);
+      const displayName = player.ingameUsername || member.user.username;
+      console.log(`[Validation] Moving ${displayName} to waiting room (${reason}).`);
       await moveIneligiblePlayer(member, reason, queueConfig);
     } else {
       eligible.push(member);

@@ -152,7 +152,7 @@ async function handleEloQueue(newState, eloQueue, party = null) {
 
   try {
     // Perform thorough validation of ALL members in the queue
-    const validated = await validateQueueMembers(newState.guild, voiceChannel, eloQueue, { forceCheck: false, wait: true });
+    const validated = await validateQueueMembers(newState.guild, voiceChannel, eloQueue, { forceCheck: true, wait: true });
 
     const expectedCount =
       eloQueue.type === '3v3' ? 6 :
@@ -191,7 +191,7 @@ async function handleStandardQueue(newState, party = null) {
   try {
     // Perform thorough validation of ALL members in the queue
     // Standard queues don't have min/max ELO but still need online check, banned check, etc.
-    const validated = await validateQueueMembers(newState.guild, voiceChannel, { type: queue.expectedCount + 'v' + queue.expectedCount }, { forceCheck: false, wait: true });
+    const validated = await validateQueueMembers(newState.guild, voiceChannel, { type: queue.expectedCount + 'v' + queue.expectedCount }, { forceCheck: true, wait: true });
 
     if (validated.length < queue.expectedCount) return;
 
