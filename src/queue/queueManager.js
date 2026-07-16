@@ -207,7 +207,9 @@ async function validateQueueMembers(guild, voiceChannel, queueConfig, options = 
     const isBanned = BANNED_ROLE && member.roles.cache.has(BANNED_ROLE);
     const isBlacklisted = BLACKLISTED_ROLE && member.roles.cache.has(BLACKLISTED_ROLE);
     const statusData = memberStatuses.get(member.id);
-    const isOffline = !statusData || statusData.status !== 'online';
+    // Treat 'check' as pending, not offline. Don't kick them, but don't count them as eligible yet.
+    const isOffline = !statusData || (statusData.status !== 'online' && statusData.status !== 'check');
+    const isPending = statusData && statusData.status === 'check';
     
     // ELO Check
     let isEloIneligible = false;
@@ -233,7 +235,7 @@ async function validateQueueMembers(guild, voiceChannel, queueConfig, options = 
       const displayName = player.ingameUsername || member.user.username;
       console.log(`[Validation] Moving ${displayName} to waiting room (${reason}).`);
       await moveIneligiblePlayer(member, reason, queueConfig);
-    } else {
+    } else if (!isPending) {
       eligible.push(member);
     }
   }

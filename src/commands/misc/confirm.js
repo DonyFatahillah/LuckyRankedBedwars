@@ -10,6 +10,7 @@ const { getActiveGames, deleteActiveGame } = require('../../queue/queueManager')
 const Player = require('../../models/Player');
 const { getLogs, updateMatchStatus, editLogEmbed } = require('../../utils/matchLogger');
 const { isAllRankQueue } = require('../../config/eloQueues');
+const { generateScoreImage } = require('../../utils/scoreImage');
 
 const activeConfirmLocks = new Set();
 
@@ -186,15 +187,27 @@ module.exports = {
           `__**Losing Team:**__\n${loserLines}`
         ].filter(Boolean).join('\n');
 
+        const attachment = await generateScoreImage(
+          gameId,
+          winningTeam,
+          results,
+          topKillerDisplayNames,
+          winBedbreakerDisplayName ? [winBedbreakerDisplayName] : [],
+          loseBedbreakerDisplayName ? [loseBedbreakerDisplayName] : [],
+          match.map
+        );
+
         await scoringChannel.send({
           content: allPlayerIds.map(id => `<@${id}>`).join(' '),
           embeds: [
             new EmbedBuilder()
               .setTitle(`📊 Game #${gameId} — ELO Summary`)
               .setDescription(description)
+              .setImage(`attachment://score-${gameId}.png`)
               .setColor(0x3498db)
               .setTimestamp()
-          ]
+          ],
+          files: [attachment]
         }).catch(() => {});
       }
 
