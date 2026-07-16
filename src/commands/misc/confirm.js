@@ -94,8 +94,10 @@ module.exports = {
       const scoringChannel = await guild.channels.fetch(SCORING_CHANNEL_ID).catch(() => null);
       const logs = await getLogs();
 
-      const winners = winningTeam === 'team1' ? match.teams[0] : match.teams[1];
-      const losers = winningTeam === 'team1' ? match.teams[1] : match.teams[0];
+      const team1 = match.teamA || match.teams?.[0] || [];
+      const team2 = match.teamB || match.teams?.[1] || [];
+      const winners = winningTeam === 'team1' ? team1 : team2;
+      const losers = winningTeam === 'team1' ? team2 : team1;
       const allPlayerIds = [...winners, ...losers];
 
       let topKillerDisplayNames = topKillerUsernameRaw ? topKillerUsernameRaw.split(',').map(s => s.trim()) : [];
@@ -262,7 +264,9 @@ module.exports = {
     const match = activeGames.find(g => g.gameId === gameId);
     if (!match) return interaction.respond([]);
 
-    const allPlayers = [...match.teams[0], ...match.teams[1]];
+    const team1 = match.teamA || match.teams?.[0] || [];
+    const team2 = match.teamB || match.teams?.[1] || [];
+    const allPlayers = [...team1, ...team2];
     const members = await Promise.all(
       allPlayers.map(pid => interaction.guild.members.fetch(pid).catch(() => null))
     );
@@ -275,8 +279,21 @@ module.exports = {
       };
     }));
 
+    // Support multiple selections separated by commas
+    const inputParts = focused.value.split(',');
+    const currentQuery = inputParts.pop().trim().toLowerCase();
+    const previousSelection = inputParts.join(', ').trim();
+    const prefix = previousSelection ? `${previousSelection}, ` : '';
+
+    const filteredChoices = choices
+      .filter(c => c.name.toLowerCase().includes(currentQuery) || c.value.toLowerCase().includes(currentQuery))
+      .slice(0, 25);
+
     return interaction.respond(
-      choices.filter(c => c.name.toLowerCase().includes(focused.value.toLowerCase())).slice(0, 25)
+      filteredChoices.map(c => ({
+        name: `${prefix}${c.name}`,
+        value: `${prefix}${c.value}`
+      }))
     );
   }
 };
