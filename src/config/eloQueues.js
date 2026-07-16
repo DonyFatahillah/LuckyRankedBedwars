@@ -44,7 +44,7 @@ module.exports = [
     maxElo: Infinity,
     voiceChannelId: process.env.QUEUE_ALL_RANK_4V4_ID,
     isPlayerPicking: true,
-    isArenaPicking: false
+    isArenaPicking: true
   },
   {
     range: [0, Infinity],
@@ -53,7 +53,7 @@ module.exports = [
     maxElo: Infinity,
     voiceChannelId: process.env.QUEUE_ALL_RANK_3V3_ID,
     isPlayerPicking: true,
-    isArenaPicking: false
+    isArenaPicking: true
   },
   {
     range: [0, Infinity],
