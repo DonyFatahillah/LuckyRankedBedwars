@@ -7,6 +7,9 @@ module.exports = {
 
     if (!message.content.startsWith('=')) return;
 
+    const blacklistedChannels = require('../config/blacklistedChannels');
+    if (blacklistedChannels.includes(message.channel.id)) return;
+
     const args = message.content.slice(1).trim().split(/ +/);
     let commandName = args.shift().toLowerCase();
 

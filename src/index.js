@@ -180,6 +180,11 @@ client.on('interactionCreate', async (interaction) => {
 
   if (!interaction.isChatInputCommand()) return;
 
+  const blacklistedChannels = require('./config/blacklistedChannels');
+  if (blacklistedChannels.includes(interaction.channelId)) {
+    return interaction.reply({ content: '❌ Commands are disabled in this channel.', flags: [64] });
+  }
+
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
 
