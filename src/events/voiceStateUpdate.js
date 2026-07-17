@@ -120,13 +120,18 @@ module.exports = {
       const isStandardQueue = ALL_QUEUE_IDS.includes(newChannelId);
 
       if (eloQueue || isStandardQueue) {
-        // Request a check ONLY for the person who joined
+        // Request a check ONLY for the person who joined if they aren't already cached online
         const player = await Player.load(newState.member);
         const username = player.ingameUsername || newState.member.user.username;
         const ign = player.ingameUsername || newState.member.id;
-        await publishPlayerOnline(ign, username, 'check');
-
-        console.log(`[QueueJoin] ${newState.member.displayName} joined queue ${newChannelId}. Requested fresh check.`);
+        
+        const currentStatus = await getPlayerOnlineStatus(ign);
+        if (!currentStatus || (currentStatus.status !== 'online' && currentStatus.status !== 'check')) {
+          await publishPlayerOnline(ign, username, 'check');
+          console.log(`[QueueJoin] ${newState.member.displayName} joined queue ${newChannelId}. Requested fresh check.`);
+        } else {
+          console.log(`[QueueJoin] ${newState.member.displayName} joined queue ${newChannelId}. Already known online.`);
+        }
       }
 
       if (eloQueue) {
