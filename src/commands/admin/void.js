@@ -42,6 +42,15 @@ module.exports = {
       option.setName('team2')
         .setDescription('Custom team 2 (comma-separated usernames)')
         .setRequired(false)
+    )
+    .addStringOption(option =>
+      option.setName('winner')
+        .setDescription('Which team originally won? (Optional)')
+        .setRequired(false)
+        .addChoices(
+          { name: 'Team 1', value: 'team1' },
+          { name: 'Team 2', value: 'team2' }
+        )
     ),
 
   async autocomplete(interaction) {
@@ -75,6 +84,7 @@ module.exports = {
     const reason = interaction.options.getString('reason')?.trim() || 'No reason provided';
     const customTeam1 = interaction.options.getString('team1');
     const customTeam2 = interaction.options.getString('team2');
+    const winnerOverride = interaction.options.getString('winner');
 
     await logStaffCommand(interaction);
 
@@ -140,10 +150,12 @@ module.exports = {
         if (t2Docs.length > 0) team2 = t2Docs.map(d => d.userId);
       }
 
+      const actualWinner = winnerOverride || match.winner;
+
       // If custom teams aren't provided and match.winner is missing (e.g. Mongo fallback),
       // team1 gets match.winners and team2 gets match.losers.
-      const winners = (match.winner === 'team2') ? team2 : team1;
-      const losers = (match.winner === 'team2') ? team1 : team2;
+      const winners = (actualWinner === 'team2') ? team2 : team1;
+      const losers = (actualWinner === 'team2') ? team1 : team2;
 
       const allPlayerIds = [...winners, ...losers];
       const results = [];
