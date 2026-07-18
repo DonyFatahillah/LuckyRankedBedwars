@@ -240,27 +240,38 @@ module.exports = {
           `__**Losing Team:**__\n${loserLines}`
         ].filter(Boolean).join('\n');
 
-        const attachment = await generateScoreImage(
-          gameId,
-          winningTeam,
-          results,
-          topKillerDisplayNames,
-          winBedbreakerDisplayName ? [winBedbreakerDisplayName] : [],
-          loseBedbreakerDisplayName ? [loseBedbreakerDisplayName] : [],
-          match.map
-        );
+        let attachment = null;
+        try {
+          attachment = await generateScoreImage(
+            gameId,
+            winningTeam,
+            results,
+            topKillerDisplayNames,
+            winBedbreakerDisplayName ? [winBedbreakerDisplayName] : [],
+            loseBedbreakerDisplayName ? [loseBedbreakerDisplayName] : [],
+            match.map
+          );
+        } catch (imgErr) {
+          console.error(`[Confirm] Failed to generate score image for game ${gameId}:`, imgErr);
+        }
 
-        await scoringChannel.send({
-          content: allPlayerIds.map(id => `<@${id}>`).join(' '),
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(`📊 Game #${gameId} — ELO Summary`)
-              .setDescription(description)
-              .setColor(0x3498db)
-              .setTimestamp()
-          ],
-          files: [attachment]
-        }).catch(() => {});
+        if (attachment) {
+          await scoringChannel.send({
+            content: allPlayerIds.map(id => `<@${id}>`).join(' '),
+            files: [attachment]
+          }).catch(() => {});
+        } else {
+          await scoringChannel.send({
+            content: allPlayerIds.map(id => `<@${id}>`).join(' '),
+            embeds: [
+              new EmbedBuilder()
+                .setTitle(`📊 Game #${gameId} — ELO Summary`)
+                .setDescription(description)
+                .setColor(0x3498db)
+                .setTimestamp()
+            ]
+          }).catch(() => {});
+        }
       }
 
       if (category) {
