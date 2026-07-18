@@ -83,17 +83,33 @@ module.exports = {
     activeConfirmLocks.add(gameId);
 
     try {
+      const logs = await getLogs();
       const activeGames = await getActiveGames();
-      const match = activeGames.find(g => g.gameId === gameId);
+      let match = activeGames.find(g => g.gameId === gameId);
+      
+      let isAllRank = false;
+      let textChannel = null;
+      let category = null;
+      const guild = interaction.guild;
+
       if (!match) {
-        return interaction.editReply({ content: `❌ No active game found with ID #${gameId}` });
+        const logEntry = logs[gameId];
+        if (!logEntry || logEntry.status !== 'pending') {
+          return interaction.editReply({ content: `❌ No active or pending game found with ID #${gameId}` });
+        }
+        match = {
+          gameId: gameId,
+          teamA: logEntry.team1,
+          teamB: logEntry.team2,
+          map: logEntry.mapName || 'Unknown'
+        };
+      } else {
+        isAllRank = isAllRankQueue(match.voiceChannelId);
+        textChannel = await guild.channels.fetch(match.textChannelId).catch(() => null);
+        category = await guild.channels.fetch(match.categoryId).catch(() => null);
       }
 
-      const isAllRank = isAllRankQueue(match.voiceChannelId);
-      const guild = interaction.guild;
-      const textChannel = await guild.channels.fetch(match.textChannelId).catch(() => null);
       const scoringChannel = await guild.channels.fetch(SCORING_CHANNEL_ID).catch(() => null);
-      const logs = await getLogs();
 
       const team1 = match.teamA || match.teams?.[0] || [];
       const team2 = match.teamB || match.teams?.[1] || [];
@@ -211,7 +227,6 @@ module.exports = {
         }).catch(() => {});
       }
 
-      const category = await guild.channels.fetch(match.categoryId).catch(() => null);
       if (category) {
         const allChannels = await guild.channels.fetch();
         const children = allChannels.filter(c => c.parentId === category.id);
@@ -263,10 +278,15 @@ module.exports = {
   autocomplete: async (interaction) => {
     const focused = interaction.options.getFocused(true);
     const activeGames = await getActiveGames();
+    const logs = await getLogs();
+    
+    const activeGameIds = new Set(activeGames.map(g => g.gameId));
+    const pendingLogIds = Object.keys(logs).filter(id => logs[id].status === 'pending' && !activeGameIds.has(id));
+    const allPendingIds = [...Array.from(activeGameIds), ...pendingLogIds];
 
     if (focused.name === 'gameid') {
       return interaction.respond(
-        activeGames.map(g => g.gameId)
+        allPendingIds
           .filter(id => id.toLowerCase().includes(focused.value.toLowerCase()))
           .slice(0, 25)
           .map(id => ({ name: `#${id}`, value: id }))
@@ -274,7 +294,10 @@ module.exports = {
     }
 
     const gameId = interaction.options.getString('gameid')?.toUpperCase();
-    const match = activeGames.find(g => g.gameId === gameId);
+    let match = activeGames.find(g => g.gameId === gameId);
+    if (!match && logs[gameId] && logs[gameId].status === 'pending') {
+      match = { teamA: logs[gameId].team1, teamB: logs[gameId].team2 };
+    }
     if (!match) return interaction.respond([]);
 
     const team1 = match.teamA || match.teams?.[0] || [];
