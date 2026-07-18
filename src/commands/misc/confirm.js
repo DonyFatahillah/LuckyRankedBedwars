@@ -56,6 +56,16 @@ module.exports = {
         .setDescription('Bedbreaker from the losing team (optional)')
         .setRequired(false)
         .setAutocomplete(true)
+    )
+    .addStringOption(option =>
+      option.setName('team1')
+        .setDescription('Custom team 1 (comma-separated usernames)')
+        .setRequired(false)
+    )
+    .addStringOption(option =>
+      option.setName('team2')
+        .setDescription('Custom team 2 (comma-separated usernames)')
+        .setRequired(false)
     ),
 
   async execute(interaction) {
@@ -75,6 +85,8 @@ module.exports = {
     const topKillerUsernames = topKillerUsernameRaw ? topKillerUsernameRaw.split(',').map(s => s.trim().toLowerCase()) : [];
     const winBedbreakerUsername = interaction.options.getString('winbedbreaker')?.toLowerCase();
     const loseBedbreakerUsername = interaction.options.getString('losebedbreaker')?.toLowerCase();
+    const customTeam1 = interaction.options.getString('team1');
+    const customTeam2 = interaction.options.getString('team2');
 
     if (activeConfirmLocks.has(gameId)) {
       return interaction.editReply({ content: `⚠️ Match #${gameId} is already being confirmed.` });
@@ -111,8 +123,33 @@ module.exports = {
 
       const scoringChannel = await guild.channels.fetch(SCORING_CHANNEL_ID).catch(() => null);
 
-      const team1 = match.teamA || match.teams?.[0] || [];
-      const team2 = match.teamB || match.teams?.[1] || [];
+      let team1 = match.teamA || match.teams?.[0] || [];
+      let team2 = match.teamB || match.teams?.[1] || [];
+
+      const PlayerModel = require('../../models/PlayerSchema');
+
+      if (customTeam1) {
+        const t1Names = customTeam1.split(',').map(s => s.trim());
+        const t1Docs = await PlayerModel.find({
+          $or: [
+            { ingameUsername: { $in: t1Names.map(n => new RegExp(`^${n}$`, 'i')) } },
+            { discordUsername: { $in: t1Names.map(n => new RegExp(`^${n}$`, 'i')) } }
+          ]
+        });
+        if (t1Docs.length > 0) team1 = t1Docs.map(d => d.userId);
+      }
+
+      if (customTeam2) {
+        const t2Names = customTeam2.split(',').map(s => s.trim());
+        const t2Docs = await PlayerModel.find({
+          $or: [
+            { ingameUsername: { $in: t2Names.map(n => new RegExp(`^${n}$`, 'i')) } },
+            { discordUsername: { $in: t2Names.map(n => new RegExp(`^${n}$`, 'i')) } }
+          ]
+        });
+        if (t2Docs.length > 0) team2 = t2Docs.map(d => d.userId);
+      }
+
       const winners = winningTeam === 'team1' ? team1 : team2;
       const losers = winningTeam === 'team1' ? team2 : team1;
       const allPlayerIds = [...winners, ...losers];
@@ -219,7 +256,6 @@ module.exports = {
             new EmbedBuilder()
               .setTitle(`📊 Game #${gameId} — ELO Summary`)
               .setDescription(description)
-              .setImage(`attachment://score-${gameId}.png`)
               .setColor(0x3498db)
               .setTimestamp()
           ],
