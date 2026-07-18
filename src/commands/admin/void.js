@@ -112,9 +112,9 @@ module.exports = {
     } 
     
     // If match is already confirmed, revert ELO
-    else if (match.status === 'confirmed') {
-      let team1 = match.team1 || [];
-      let team2 = match.team2 || [];
+    else if (match.status && match.status.toLowerCase() === 'confirmed') {
+      let team1 = match.team1 || match.winners || [];
+      let team2 = match.team2 || match.losers || [];
 
       const PlayerModel = require('../../models/PlayerSchema');
 
@@ -140,8 +140,10 @@ module.exports = {
         if (t2Docs.length > 0) team2 = t2Docs.map(d => d.userId);
       }
 
-      const winners = (match.winner === 'team1' || !match.winner) ? team1 : team2;
-      const losers = (match.winner === 'team1' || !match.winner) ? team2 : team1;
+      // If custom teams aren't provided and match.winner is missing (e.g. Mongo fallback),
+      // team1 gets match.winners and team2 gets match.losers.
+      const winners = (match.winner === 'team2') ? team2 : team1;
+      const losers = (match.winner === 'team2') ? team1 : team2;
 
       const allPlayerIds = [...winners, ...losers];
       const results = [];
@@ -155,15 +157,22 @@ module.exports = {
         const isWinner = winners.includes(pid);
 
         // Revert calculations
+        const mvpNames = match.mvp ? match.mvp.toLowerCase().split(',').map(s => s.trim()) : [];
+        const winBedbreakerNames = match.bedbreaker ? match.bedbreaker.toLowerCase().split(',').map(s => s.trim()) : [];
+        const loseBedbreakerNames = match.loseBedbreaker ? match.loseBedbreaker.toLowerCase().split(',').map(s => s.trim()) : [];
+        
+        const isMvp = mvpNames.includes(member.displayName.toLowerCase());
+        const isBedbreaker = winBedbreakerNames.includes(member.displayName.toLowerCase()) || loseBedbreakerNames.includes(member.displayName.toLowerCase());
+
         if (isWinner) {
           const winGain = player.getWinGain();
-          const mvpBonus = (match.mvp && member.displayName.toLowerCase() === match.mvp.toLowerCase()) ? player.getMvpBonus() : 0;
-          const bedBonus = (match.bedbreaker && member.displayName.toLowerCase() === match.bedbreaker.toLowerCase()) ? 5 : 0;
+          const mvpBonus = isMvp ? player.getMvpBonus() : 0;
+          const bedBonus = isBedbreaker ? 5 : 0;
           const totalGain = winGain + mvpBonus + bedBonus;
           await player.setElo(Math.max(0, oldElo - totalGain));
         } else {
           const lossPenalty = player.getLossPenalty();
-          const mvpReduction = (match.mvp && member.displayName.toLowerCase() === match.mvp.toLowerCase()) ? player.getMvpBonus() : 0;
+          const mvpReduction = isMvp ? player.getMvpBonus() : 0;
           const totalLoss = Math.max(0, lossPenalty - mvpReduction);
           await player.setElo(oldElo + totalLoss);
         }
@@ -207,12 +216,12 @@ module.exports = {
 
         if (attachment) {
           await scoringChannel.send({
-            content: allPlayerIds.map(id => `<@${id}>`).join(' '),
+            content: allPlayerIds.map(id => `<@${id}>`).join(' ') || undefined,
             files: [attachment]
           }).catch(() => {});
         } else {
           await scoringChannel.send({
-            content: allPlayerIds.map(id => `<@${id}>`).join(' '),
+            content: allPlayerIds.map(id => `<@${id}>`).join(' ') || undefined,
             embeds: [embed]
           }).catch(() => {});
         }

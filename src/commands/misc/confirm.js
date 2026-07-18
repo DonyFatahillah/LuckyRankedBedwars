@@ -257,12 +257,12 @@ module.exports = {
 
         if (attachment) {
           await scoringChannel.send({
-            content: allPlayerIds.map(id => `<@${id}>`).join(' '),
+            content: allPlayerIds.map(id => `<@${id}>`).join(' ') || undefined,
             files: [attachment]
           }).catch(() => {});
         } else {
           await scoringChannel.send({
-            content: allPlayerIds.map(id => `<@${id}>`).join(' '),
+            content: allPlayerIds.map(id => `<@${id}>`).join(' ') || undefined,
             embeds: [
               new EmbedBuilder()
                 .setTitle(`📊 Game #${gameId} — ELO Summary`)
