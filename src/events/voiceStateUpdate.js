@@ -37,6 +37,7 @@ const ALL_QUEUE_IDS = Object.entries(process.env)
   .map(([, value]) => value);
 
 const deletedCategories = new Set();
+const pendingCleanups = new Set();
 const ONLINE_CHECK_TIMEOUT_MS = 10000;
 const ONLINE_CHECK_INTERVAL_MS = 250;
 
@@ -240,7 +241,32 @@ async function handleCategoryCleanup(leftChannel) {
   const voiceChannels = category.children.cache.filter(c => c.type === ChannelType.GuildVoice);
   const allEmpty = voiceChannels.every(vc => vc.members.size === 0);
 
-  if (!allEmpty) return;
+  if (!allEmpty) {
+    if (pendingCleanups.has(categoryId)) {
+      console.log(`[Cleanup] Someone rejoined game #${gameId}. Canceling cleanup.`);
+      pendingCleanups.delete(categoryId);
+    }
+    return;
+  }
+
+  if (pendingCleanups.has(categoryId)) return;
+
+  console.log(`[Cleanup] Game #${gameId} is empty. Waiting 30 seconds before cleanup...`);
+  pendingCleanups.add(categoryId);
+
+  await new Promise(resolve => setTimeout(resolve, 30000));
+
+  if (!pendingCleanups.has(categoryId)) return;
+  pendingCleanups.delete(categoryId);
+
+  // Re-fetch category and double check emptiness just in case
+  const freshCategory = await leftChannel.guild.channels.fetch(categoryId).catch(() => null);
+  if (!freshCategory) return;
+
+  const freshVoiceChannels = freshCategory.children.cache.filter(c => c.type === ChannelType.GuildVoice);
+  const freshAllEmpty = freshVoiceChannels.every(vc => vc.members.size === 0);
+
+  if (!freshAllEmpty) return;
 
   if (matchData.status === 'pending') {
     console.log(`[Cleanup] Game #${gameId} is pending and empty. Voiding it...`);
@@ -257,7 +283,7 @@ async function handleCategoryCleanup(leftChannel) {
     await editLogEmbed(client, guildId, gameId, process.env.VERIFY_MATCH_CHANNEL_ID, 'void', { reason });
     await publishMatchVoid({ matchId: gameId, action: 'void' }).catch(() => {});
   } else {
-    console.log(`[Cleanup] All voice channels in game #${gameId} are empty or moving. Deleting...`);
+    console.log(`[Cleanup] Game #${gameId} is empty. Deleting...`);
   }
 
   deletedCategories.add(categoryId);
@@ -265,14 +291,14 @@ async function handleCategoryCleanup(leftChannel) {
   const waitingRoomId = process.env.WAITING_ROOM_VOICE_ID;
   const waitingRoom = waitingRoomId ? leftChannel.guild.channels.cache.get(waitingRoomId) : null;
 
-  for (const channel of category.children.cache.values()) {
+  for (const channel of freshCategory.children.cache.values()) {
     if (channel.type === ChannelType.GuildVoice && waitingRoom) {
       await Promise.all(channel.members.map(m => m.voice.setChannel(waitingRoom).catch(() => {})));
     }
     await channel.delete().catch(err => { if (err.code !== 10003) console.error(err); });
   }
 
-  await category.delete().catch(err => { if (err.code !== 10003) console.error(err); });
+  await freshCategory.delete().catch(err => { if (err.code !== 10003) console.error(err); });
   deleteActiveGame(gameId);
   setTimeout(() => deletedCategories.delete(categoryId), 5000);
 }
