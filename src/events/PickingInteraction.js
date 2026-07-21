@@ -12,8 +12,12 @@ module.exports = {
     const isSelect = interaction.isStringSelectMenu();
     const isBtn = interaction.isButton();
 
-    if (isSelect && interaction.customId.startsWith('picking-select-')) {
-      await handlePicking(interaction);
+    try {
+      if (isSelect && interaction.customId.startsWith('picking-select-')) {
+        await handlePicking(interaction);
+      }
+    } catch (err) {
+      console.error('[PickingInteraction] Error handling picking:', err);
     }
   }
 };
@@ -39,7 +43,12 @@ async function handlePicking(interaction) {
   }
 
   // Defer update here to give us more time for the logic and message building
-  await interaction.deferUpdate().catch(() => {});
+  try {
+    await interaction.deferUpdate();
+  } catch (err) {
+    console.error(`[PickingInteraction] Failed to defer update for game ${gameId}:`, err);
+    return;
+  }
 
   const isTeamA = game.captainIds[0] === user.id;
   if (isTeamA) {
@@ -90,11 +99,19 @@ async function handlePicking(interaction) {
       color: 0xffff00
     };
 
-    return interaction.editReply({ 
-      content: `Captain <@${user.id}> picked <@${pickedUserId}>, now it's Captain <@${game.pickingTurn}> to pick.`,
-      embeds: [pickingEmbed], 
-      components: [row] 
-    });
+    try {
+      return await interaction.editReply({ 
+        content: `Captain <@${user.id}> picked <@${pickedUserId}>, now it's Captain <@${game.pickingTurn}> to pick.`,
+        embeds: [pickingEmbed], 
+        components: [row] 
+      });
+    } catch (err) {
+      return await channel.send({ 
+        content: `Captain <@${user.id}> picked <@${pickedUserId}>, now it's Captain <@${game.pickingTurn}> to pick.`,
+        embeds: [pickingEmbed], 
+        components: [row] 
+      }).catch(() => {});
+    }
   } else {
     // Picking Finished!
     game.pickingPhase = false;
@@ -109,7 +126,12 @@ async function handlePicking(interaction) {
     if (game.isArenaPicking) {
       game.status = 'voting';
       await game.save();
-      await interaction.editReply({ content: `${finishContent}\nStarting map selection...`, embeds: [], components: [] });
+      
+      try {
+        await interaction.editReply({ content: `${finishContent}\nStarting map selection...`, embeds: [], components: [] });
+      } catch (e) {
+        await channel.send({ content: `${finishContent}\nStarting map selection...` }).catch(() => {});
+      }
       await startMapVoting(guild, channel, game);
     } else {
       const mapPicker = require('../utils/mapPicker');
@@ -118,7 +140,12 @@ async function handlePicking(interaction) {
       game.map = selectedMap;
       game.status = 'pending';
       await game.save();
-      await interaction.editReply({ content: `${finishContent}\nSelected map: **${selectedMap}**. Finalizing match...`, embeds: [], components: [] });
+      
+      try {
+        await interaction.editReply({ content: `${finishContent}\nSelected map: **${selectedMap}**. Finalizing match...`, embeds: [], components: [] });
+      } catch (e) {
+        await channel.send({ content: `${finishContent}\nSelected map: **${selectedMap}**. Finalizing match...` }).catch(() => {});
+      }
       await finalizeMatch(guild, channel, game);
     }
   }

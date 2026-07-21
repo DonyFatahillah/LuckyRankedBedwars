@@ -107,7 +107,7 @@ async function finalizeMatch(guild, channel, game) {
     ];
 
     const teamVCTasks = teams.map((team, i) => guild.channels.create({
-      name: `#${game.gameId} Team ${i + 1}`,
+      name: `${game.gameId} | Team ${i + 1}`,
       type: ChannelType.GuildVoice,
       parent: game.categoryId,
       permissionOverwrites: getPermissionOverwrites(team, PermissionFlagsBits.Connect, false)

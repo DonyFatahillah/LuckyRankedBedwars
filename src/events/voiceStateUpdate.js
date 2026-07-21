@@ -222,8 +222,8 @@ async function handleCategoryCleanup(leftChannel) {
   const categoryId = category?.id;
   if (!categoryId || deletedCategories.has(categoryId)) return;
 
-  // --- Only proceed if this looks like a match category (#HEXCODE ...) ---
-  const matchHexRegex = /^#([0-9A-F]{6})\b/i;
+  // --- Only proceed if this looks like a match category (Game | HEXCODE or #HEXCODE Game) ---
+  const matchHexRegex = /(?:^#([0-9A-F]{6})\b|^Game\s*\|\s*([0-9A-F]{6})\b)/i;
   if (!matchHexRegex.test(category.name)) return;
 
   console.log(`[Cleanup Debug] Checking cleanup for category: ${category.name} (${categoryId})`);
@@ -237,17 +237,29 @@ async function handleCategoryCleanup(leftChannel) {
   }
 
   const gameId = matchData.gameId;
-  if (matchData.status === 'pending') {
-    console.log(`[Cleanup] Game #${gameId} is pending. Skipping cleanup.`);
-    return;
-  }
-
   const voiceChannels = category.children.cache.filter(c => c.type === ChannelType.GuildVoice);
   const allEmpty = voiceChannels.every(vc => vc.members.size === 0);
 
   if (!allEmpty) return;
 
-  console.log(`[Cleanup] All voice channels in game #${gameId} are empty or moving. Deleting...`);
+  if (matchData.status === 'pending') {
+    console.log(`[Cleanup] Game #${gameId} is pending and empty. Voiding it...`);
+    const { updateMatchStatus, editLogEmbed } = require('../utils/matchLogger');
+    const { publishMatchVoid } = require('../utils/redisClient');
+    
+    const reason = 'Players abandoned the voice channels';
+    const guildId = category.guild.id;
+    const client = leftChannel.client;
+
+    await updateMatchStatus(gameId, 'void');
+    await editLogEmbed(client, guildId, gameId, process.env.STAFF_VERIFY_CHANNEL_ID, 'void', { reason });
+    await editLogEmbed(client, guildId, gameId, process.env.MATCH_LOGS_ID, 'void', { reason });
+    await editLogEmbed(client, guildId, gameId, process.env.VERIFY_MATCH_CHANNEL_ID, 'void', { reason });
+    await publishMatchVoid({ matchId: gameId, action: 'void' }).catch(() => {});
+  } else {
+    console.log(`[Cleanup] All voice channels in game #${gameId} are empty or moving. Deleting...`);
+  }
+
   deletedCategories.add(categoryId);
 
   const waitingRoomId = process.env.WAITING_ROOM_VOICE_ID;

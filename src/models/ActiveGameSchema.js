@@ -18,7 +18,12 @@ const activeGameSchema = new mongoose.Schema({
   pickingTurn: { type: String, default: null }, // userId of the captain whose turn it is
   unpickedPlayers: { type: [String], default: [] }, // userIds of players yet to be picked
   isPlayerPicking: { type: Boolean, default: false },
-  isArenaPicking: { type: Boolean, default: false }
+  isArenaPicking: { type: Boolean, default: false },
+  captainIds: { type: [String], default: [] },
+  textChannelId: { type: String },
+  status: { type: String, default: 'pending' },
+  rules: { type: Object, default: {} },
+  isPartyMatch: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('ActiveGame', activeGameSchema, 'ActiveGames');

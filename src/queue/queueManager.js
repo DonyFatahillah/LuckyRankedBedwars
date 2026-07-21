@@ -476,7 +476,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
     ], true);
 
     const category = await guild.channels.create({
-      name: `#${hex} Game`,
+      name: `Game | ${hex}`,
       type: ChannelType.GuildCategory,
       permissionOverwrites: categoryPerms
     });
@@ -497,7 +497,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
     if (!needsWaitingRoom) {
       for (let i = 0; i < teams.length; i++) {
         channelTasks.push(guild.channels.create({
-          name: `#${hex} Team ${i + 1}`,
+          name: `${hex} | Team ${i + 1}`,
           type: ChannelType.GuildVoice,
           parent: category.id,
           permissionOverwrites: getPermissionOverwrites(teams[i], PermissionFlagsBits.Connect, false)

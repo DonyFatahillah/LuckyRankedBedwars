@@ -22,7 +22,11 @@ class ActiveGame {
     this.isPlayerPicking = data.isPlayerPicking || false;
     this.isArenaPicking = data.isArenaPicking || false;
     this.captainIds = data.captainIds || [];
+    this.channelId = data.channelId || data.textChannelId;
     this.textChannelId = data.textChannelId || data.channelId;
+    this.status = data.status || 'pending';
+    this.rules = data.rules || {};
+    this.isPartyMatch = data.isPartyMatch || false;
   }
 
   static async load(gameId) {
