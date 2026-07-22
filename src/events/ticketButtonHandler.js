@@ -28,7 +28,7 @@ module.exports = {
     const user = interaction.user;
 
     // ❌ Check if user is banned from opening tickets
-    if (isBanned(user.id)) {
+    if (await isBanned(user.id)) {
       return interaction.reply({
         content: '⛔ You are banned from opening tickets.',
         flags: MessageFlags.Ephemeral,
