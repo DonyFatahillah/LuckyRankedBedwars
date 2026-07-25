@@ -547,16 +547,26 @@ async function createMatch(guild, players, teamSize, options = {}) {
         permissionOverwrites: getPermissionOverwrites(allSelectedPlayers, PermissionFlagsBits.Connect, false)
       });
 
-      // 2. Move players to Waiting Room (Parallel)
-      await Promise.all(allSelectedPlayers.map(async p => {
+      // 2. Move players to Waiting Room sequentially with a slight delay
+      for (const p of allSelectedPlayers) {
+        let moved = false;
         if (p.voice?.channelId) {
-          return p.voice.setChannel(waitingRoom).catch(() => {});
+          await p.voice.setChannel(waitingRoom).catch(() => {});
+          moved = true;
         } else {
           // Fallback fetch if voice state is missing for some reason
           const member = await guild.members.fetch(p.id).catch(() => null);
-          if (member?.voice.channelId) return member.voice.setChannel(waitingRoom).catch(() => {});
+          if (member?.voice.channelId) {
+            await member.voice.setChannel(waitingRoom).catch(() => {});
+            moved = true;
+          }
         }
-      }));
+        
+        // Add a 200ms delay between moves to stagger them smoothly and avoid rate limits
+        if (moved) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
 
       if (usePlayerPicking) {
         // 3. --- SETUP PICKING PHASE ---
@@ -761,10 +771,15 @@ function getRulesForMatchType(teamSize) {
 
     const rulesText = [
       formatSection('✅ Allowed', section.allowed),
-      formatSection('🕒 After Emerald II', section.after_emerald_ii),
+      formatSection('💎 After Diamond I', section.after_diamond_i),
+      formatSection('💎💎 After Diamond II', section.after_diamond_ii),
+      formatSection('💎💎💎 After Diamond III', section.after_diamond_iii),
+      formatSection('💚 After Emerald I', section.after_emerald_i),
+      formatSection('💚💚 After Emerald II', section.after_emerald_ii),
+      formatSection('💚💚💚 After Emerald III', section.after_emerald_iii),
       formatSection('💥 After Any Bed Break', section.after_any_bed_break),
       formatSection('⛔ Banned', section.banned)
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     return {
       format: `${teamSize}v${teamSize}`,
@@ -802,22 +817,19 @@ function getPermissionOverwrites(players, permissions, isTextChannel = false) {
 // Move players
 // -------------------------
 async function movePlayersToVoiceChannels(guild, teams, voiceChannels) {
-  const moveTasks = [];
-
-  teams.forEach((team, i) => {
+  for (let i = 0; i < teams.length; i++) {
+    const team = teams[i];
     const targetVC = voiceChannels[i];
-    if (!targetVC) return;
+    if (!targetVC) continue;
     
-    team.forEach(p => {
-      // p is already a GuildMember object with voice state from the selection phase
+    for (const p of team) {
       if (p.voice?.channelId) {
-        moveTasks.push(p.voice.setChannel(targetVC).catch(() => {}));
+        await p.voice.setChannel(targetVC).catch(() => {});
+        // Add a 200ms delay between moves to stagger them smoothly and avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
-    });
-  });
-
-  // This executes ALL move requests at the exact same moment
-  await Promise.all(moveTasks);
+    }
+  }
 }
 
 const ActiveGame = require('../models/ActiveGame');

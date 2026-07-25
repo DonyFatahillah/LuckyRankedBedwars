@@ -35,7 +35,6 @@ async function buildQueueStatsEmbed(channelId, userId) {
 
   const embed = new EmbedBuilder()
     .setTitle(`📊 Match Stats - #${match.gameId}`)
-    .setDescription(`**Queue Type:** ${match.queueType || 'N/A'}\n**Map:** ${match.map || 'TBD'}`)
     .setColor(0x00AAFF)
     .setTimestamp();
 
