@@ -410,20 +410,66 @@ async function createMatch(guild, players, teamSize, options = {}) {
   const usePlayerPicking = eloQueue && eloQueues.isPlayerPicking(eloQueue.voiceChannelId);
   const useArenaPicking = eloQueue && eloQueues.isArenaPicking(eloQueue.voiceChannelId);
 
+  const isPremiumQueue = options.eloQueue?.requiredRoleId !== undefined;
+
+  const getPremiumLevel = (member) => {
+    if (process.env.PREMIUM_ROLE_ID && member.roles.cache.has(process.env.PREMIUM_ROLE_ID)) return 4;
+    if (process.env.PUGS_ROLE_ID && member.roles.cache.has(process.env.PUGS_ROLE_ID)) return 3;
+    if (process.env.PUPS_ROLE_ID && member.roles.cache.has(process.env.PUPS_ROLE_ID)) return 2;
+    if (process.env.PITS_ROLE_ID && member.roles.cache.has(process.env.PITS_ROLE_ID)) return 1;
+    return 0;
+  };
+
+  const compareCaptainPriority = (a, b) => {
+    const aLevel = getPremiumLevel(a.member);
+    const bLevel = getPremiumLevel(b.member);
+    
+    if (aLevel !== bLevel) {
+      return bLevel - aLevel;
+    }
+    
+    if (a.isPremium && !b.isPremium) return -1;
+    if (!a.isPremium && b.isPremium) return 1;
+    
+    if (isPremiumQueue) return 0;
+    
+    return b.elo - a.elo;
+  };
+
+  const groupData = await Promise.all(eligibleGroups.map(async group => {
+    const instances = await Promise.all(group.members.map(m => Player.load(m)));
+    const sorted = [...instances].sort(compareCaptainPriority);
+    return { group, bestInstance: sorted[0] };
+  }));
+
+  const shuffledGroupData = shuffle([...groupData]);
+  shuffledGroupData.sort((a, b) => compareCaptainPriority(a.bestInstance, b.bestInstance));
+
   const team1 = [];
   const team2 = [];
 
-  const shuffledGroups = shuffle([...eligibleGroups]);
-
-  for (const group of shuffledGroups) {
-    if (team1.length + group.members.length <= teamSize) {
-      team1.push(...group.members);
-    } else if (team2.length + group.members.length <= teamSize) {
-      team2.push(...group.members);
+  for (const { group } of shuffledGroupData) {
+    if (team1.length <= team2.length) {
+      if (team1.length + group.members.length <= teamSize) {
+        team1.push(...group.members);
+      } else if (team2.length + group.members.length <= teamSize) {
+        team2.push(...group.members);
+      } else {
+        for (const member of group.members) {
+          if (team1.length < teamSize) team1.push(member);
+          else team2.push(member);
+        }
+      }
     } else {
-      for (const member of group.members) {
-        if (team1.length < teamSize) team1.push(member);
-        else team2.push(member);
+      if (team2.length + group.members.length <= teamSize) {
+        team2.push(...group.members);
+      } else if (team1.length + group.members.length <= teamSize) {
+        team1.push(...group.members);
+      } else {
+        for (const member of group.members) {
+          if (team2.length < teamSize) team2.push(member);
+          else team1.push(member);
+        }
       }
     }
   }
@@ -431,40 +477,21 @@ async function createMatch(guild, players, teamSize, options = {}) {
   const teams = [team1, team2];
   const allSelectedPlayers = [...team1, ...team2];
 
-  const isPremiumQueue = options.eloQueue?.requiredRoleId !== undefined;
-
-  const captains = await Promise.all(
-    teams.map(async team => {
-      const instances = await Promise.all(team.map(m => Player.load(m)));
-      
-      const getPremiumLevel = (member) => {
-        if (process.env.PREMIUM_ROLE_ID && member.roles.cache.has(process.env.PREMIUM_ROLE_ID)) return 4;
-        if (process.env.PUGS_ROLE_ID && member.roles.cache.has(process.env.PUGS_ROLE_ID)) return 3;
-        if (process.env.PUPS_ROLE_ID && member.roles.cache.has(process.env.PUPS_ROLE_ID)) return 2;
-        if (process.env.PITS_ROLE_ID && member.roles.cache.has(process.env.PITS_ROLE_ID)) return 1;
-        return 0;
-      };
-
-      const shuffled = shuffle([...instances]);
-      const sorted = shuffled.sort((a, b) => {
-        const aLevel = getPremiumLevel(a.member);
-        const bLevel = getPremiumLevel(b.member);
-        
-        if (aLevel !== bLevel) {
-          return bLevel - aLevel;
-        }
-        
-        if (a.isPremium && !b.isPremium) return -1;
-        if (!a.isPremium && b.isPremium) return 1;
-        
-        if (isPremiumQueue) return 0;
-        
-        return b.elo - a.elo;
-      });
-      
-      return sorted[0].member.id;
-    })
-  );
+  let captains;
+  
+  if (usePlayerPicking) {
+    const allInstances = await Promise.all(allSelectedPlayers.map(m => Player.load(m)));
+    const sortedAll = shuffle([...allInstances]).sort(compareCaptainPriority);
+    captains = [sortedAll[0].member.id, sortedAll[1].member.id];
+  } else {
+    captains = await Promise.all(
+      teams.map(async team => {
+        const instances = await Promise.all(team.map(m => Player.load(m)));
+        const sorted = shuffle([...instances]).sort(compareCaptainPriority);
+        return sorted[0].member.id;
+      })
+    );
+  }
 
   const rules = getRulesForMatchType(teamSize);
 
@@ -514,7 +541,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
     if (needsWaitingRoom) {
       // 1. Create Waiting Room VC
       const waitingRoom = await guild.channels.create({
-        name: `🕒 Waiting Room #${hex}`,
+        name: `Waiting Room | ${hex}`,
         type: ChannelType.GuildVoice,
         parent: category.id,
         permissionOverwrites: getPermissionOverwrites(allSelectedPlayers, PermissionFlagsBits.Connect, false)
