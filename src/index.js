@@ -163,6 +163,14 @@
     try {
       console.log(`[Startup] Ready event triggered as ${client.user.tag}`);
 
+      if (client.user.username !== 'LuckyRankedBedwars') {
+        try {
+          await client.user.setUsername('LuckyRankedBedwars');
+          console.log('[Startup] Successfully changed bot username to LuckyRankedBedwars');
+        } catch (err) {
+          console.error('[Startup] Failed to change bot username (rate limit or invalid):', err.message);
+        }
+      }
 
   // ✅ Confirm pending submitted matches // Preload display names
 
