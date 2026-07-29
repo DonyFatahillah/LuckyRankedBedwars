@@ -85,12 +85,33 @@
 
   async function sendStatusEmbed(type, err = null) {
     try {
-      const channel = await client.channels.fetch(process.env.BOT_STATUS_CHANNEL_ID);
+      const channelId = process.env.STATUS_CHANNEL_ID || process.env.BOT_STATUS_CHANNEL_ID;
+      const channel = await client.channels.fetch(channelId).catch(() => null);
       if (!channel) return;
 
       const embed = new EmbedBuilder().setTitle('🤖 Bot Status').setTimestamp();
 
-      if (type === 'online') {
+      const pteroDomain = process.env.PTERO_DOMAIN;
+      const pteroApiKey = process.env.PTERO_API_KEY;
+      const pteroServerId = process.env.PTERO_SERVER_ID;
+
+      let pteroStats = null;
+      if (pteroDomain && pteroApiKey && pteroServerId) {
+        try {
+          const axios = require('axios');
+          const response = await axios.get(`${pteroDomain}/api/client/servers/${pteroServerId}/resources`, {
+            headers: {
+              'Authorization': `Bearer ${pteroApiKey}`,
+              'Accept': 'application/json'
+            }
+          });
+          pteroStats = response.data.attributes;
+        } catch (fetchErr) {
+          console.error('[Ptero API Error]', fetchErr.message);
+        }
+      }
+
+      if (type === 'online' || type === 'update') {
         embed.setDescription('🟢 Bot is **online** and ready.').setColor(0x00ff00);
       } else if (type === 'shutdown') {
         embed.setDescription('🔴 Bot is **shutting down**.').setColor(0xff9900);
@@ -101,7 +122,38 @@
           .addFields({ name: 'Error', value: `\`\`\`${(err || '').toString().slice(0, 1000)}\`\`\`` });
       }
 
-      await channel.send({ embeds: [embed] });
+      if (pteroStats) {
+        const state = pteroStats.current_state || 'unknown';
+        const memory = pteroStats.resources ? (pteroStats.resources.memory_bytes / 1024 / 1024).toFixed(2) : '0.00';
+        const cpu = pteroStats.resources ? pteroStats.resources.cpu_absolute.toFixed(2) : '0.00';
+        const uptimeMillis = pteroStats.resources ? pteroStats.resources.uptime : 0;
+        
+        let uptimeStr = "0s";
+        if (uptimeMillis > 0) {
+          const totalSeconds = Math.floor(uptimeMillis / 1000);
+          const d = Math.floor(totalSeconds / (3600 * 24));
+          const h = Math.floor((totalSeconds % (3600 * 24)) / 3600);
+          const m = Math.floor((totalSeconds % 3600) / 60);
+          const s = totalSeconds % 60;
+          uptimeStr = `${d}d ${h}h ${m}m ${s}s`;
+        }
+
+        embed.addFields(
+          { name: 'Server State', value: `\`${state.toUpperCase()}\``, inline: true },
+          { name: 'CPU Usage', value: `\`${cpu}%\``, inline: true },
+          { name: 'RAM Usage', value: `\`${memory} MB\``, inline: true },
+          { name: 'Uptime', value: `\`${uptimeStr}\``, inline: true }
+        );
+      }
+
+      const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+      const botMessage = messages ? messages.find(m => m.author.id === client.user.id && m.embeds[0]?.title === '🤖 Bot Status') : null;
+
+      if (botMessage && (type === 'online' || type === 'update')) {
+        await botMessage.edit({ embeds: [embed] }).catch(console.error);
+      } else {
+        await channel.send({ embeds: [embed] }).catch(console.error);
+      }
     } catch (e) {
       console.error('[Status Embed Error]', e);
     }
@@ -155,6 +207,10 @@
       await startQueuePolling(client);
 
       await sendStatusEmbed('online');
+      
+      setInterval(() => {
+        sendStatusEmbed('update').catch(err => console.error('[BotStatusUpdate Error]', err));
+      }, 60000);
     } catch (err) {
       console.error('[FATAL] Error inside ready block:', err);
       await sendStatusEmbed('crash', err);
