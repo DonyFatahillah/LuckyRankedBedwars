@@ -275,10 +275,40 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+  async function setOfflineStatus() {
+    try {
+        const channelId = process.env.STATUS_CHANNEL_ID || process.env.BOT_STATUS_CHANNEL_ID;
+        const channel = await client.channels.fetch(channelId).catch(() => null);
+        if (channel) {
+            const messages = await channel.messages.fetch({ limit: 10 });
+            const msg = messages.find(m => m.author.id === client.user.id && m.embeds[0]?.title === '🤖 Bot Status');
+            
+            const offlineEmbed = new EmbedBuilder()
+                .setTitle('🤖 Bot Status')
+                .setColor(0xED4245) // Red
+                .addFields(
+                    { name: 'Status', value: '`OFFLINE`', inline: true },
+                    { name: 'Last Updated', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
+                );
+            if (msg) {
+                await msg.edit({ embeds: [offlineEmbed] });
+            }
+        }
+    } catch (e) {
+        console.error('Failed to set offline status:', e);
+    }
+  }
+
   process.on('SIGINT', async () => {
-    console.log('[Shutdown] Bot is shutting down...');
-    await sendStatusEmbed('shutdown');
-    process.exit();
+      console.log('[Shutdown] Bot is shutting down...');
+      await setOfflineStatus();
+      process.exit(0);
+  });
+
+  process.on('SIGTERM', async () => {
+      console.log('[Shutdown] Bot is shutting down...');
+      await setOfflineStatus();
+      process.exit(0);
   });
 
   function loadCommands(dir) {
