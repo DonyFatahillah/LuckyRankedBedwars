@@ -122,6 +122,58 @@
           .addFields({ name: 'Error', value: `\`\`\`${(err || '').toString().slice(0, 1000)}\`\`\`` });
       }
 
+      let inGamePlayers = 0;
+      let inQueuePlayers = 0;
+      try {
+          if (typeof getActiveGames === 'function') {
+              const activeGames = await getActiveGames();
+              if (Array.isArray(activeGames)) {
+                  inGamePlayers = activeGames.reduce((acc, game) => acc + (game.players ? game.players.length : 0), 0);
+              }
+          }
+          const guildId = process.env.GUILD_ID;
+          if (guildId) {
+              const guild = client.guilds.cache.get(guildId);
+              if (guild) {
+                  const seenChannels = new Set();
+                  const waitingRoomId = process.env.WAITING_ROOM_VOICE_ID;
+                  if (waitingRoomId) {
+                      const vc = guild.channels.cache.get(waitingRoomId);
+                      if (vc && vc.isVoiceBased()) {
+                          inQueuePlayers += vc.members.size;
+                          seenChannels.add(waitingRoomId);
+                      }
+                  }
+                  const eloQueues = require('./config/eloQueues');
+                  for (const q of eloQueues) {
+                      if (q.voiceChannelId && !seenChannels.has(q.voiceChannelId)) {
+                          const vc = guild.channels.cache.get(q.voiceChannelId);
+                          if (vc && vc.isVoiceBased()) {
+                              inQueuePlayers += vc.members.size;
+                              seenChannels.add(q.voiceChannelId);
+                          }
+                      }
+                  }
+              }
+          }
+      } catch (e) {
+          console.error('[StatusEmbed] Stats error', e);
+      }
+
+      embed.addFields(
+        { name: 'In Queue', value: `\`${inQueuePlayers} Players\``, inline: true },
+        { name: 'In Game', value: `\`${inGamePlayers} Players\``, inline: true }
+      );
+
+      try {
+          const { redis } = require('./utils/redisClient');
+          const payload = JSON.stringify({ inQueue: inQueuePlayers, inGame: inGamePlayers, timestamp: Date.now() });
+          await redis.set('bot.status.stats', payload);
+          await redis.publish('bot.status.update', payload);
+      } catch (err) {
+          console.error('[Redis] Failed to send stats to monitor bot:', err.message);
+      }
+
       if (pteroStats) {
         const state = pteroStats.current_state || 'unknown';
         const memory = pteroStats.resources ? (pteroStats.resources.memory_bytes / 1024 / 1024).toFixed(2) : '0.00';
