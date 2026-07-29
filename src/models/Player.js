@@ -174,12 +174,13 @@ class Player {
     await this.save();
   }
 
-  async lose(gameId, isMVP = false) {
+  async lose(gameId, isMVP = false, isBedbreaker = false) {
     this.addRecentGame(gameId);
     const penalty = this.getLossPenalty();
-    const mvpReduction = isMVP ? this.getMvpBonus() : 0;
-    const netLoss = Math.max(0, penalty - mvpReduction);
-    this.elo = Math.max(0, this.elo - netLoss);
+    const mvpBonus = isMVP ? this.getMvpBonus() : 0;
+    const bedBonus = isBedbreaker ? 5 : 0;
+    const netChange = mvpBonus + bedBonus - penalty;
+    this.elo = Math.max(0, this.elo + netChange);
     this.losses += 1;
     this.winstreak = 0;
     await this.save();

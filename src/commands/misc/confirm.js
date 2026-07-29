@@ -182,7 +182,7 @@ module.exports = {
         if (isWinner) {
           await player.win(gameId, isTopKiller, isWinBreaker);
         } else {
-          await player.lose(gameId, isAllRank ? false : isTopKiller);
+          await player.lose(gameId, isAllRank ? false : isTopKiller, isLoseBreaker);
         }
 
         if (isTopKiller) await player.addTopKill();

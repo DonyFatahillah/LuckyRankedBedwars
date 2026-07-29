@@ -184,9 +184,10 @@ module.exports = {
           await player.setElo(Math.max(0, oldElo - totalGain));
         } else {
           const lossPenalty = player.getLossPenalty();
-          const mvpReduction = isMvp ? player.getMvpBonus() : 0;
-          const totalLoss = Math.max(0, lossPenalty - mvpReduction);
-          await player.setElo(oldElo + totalLoss);
+          const mvpBonus = isMvp ? player.getMvpBonus() : 0;
+          const bedBonus = isBedbreaker ? 5 : 0;
+          const netChange = mvpBonus + bedBonus - lossPenalty;
+          await player.setElo(Math.max(0, oldElo - netChange));
         }
 
         results.push({

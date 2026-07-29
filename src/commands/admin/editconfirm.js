@@ -85,6 +85,10 @@ module.exports = {
 
     // Recalculate ELO for each player
     const results = [];
+    const mvpNames = mvp ? mvp.toLowerCase().split(',').map(s => s.trim()) : [];
+    const winBedbreakerName = winBedbreaker ? winBedbreaker.toLowerCase() : null;
+    const loseBedbreakerName = loseBedbreaker ? loseBedbreaker.toLowerCase() : null;
+
     for (const member of members.filter(Boolean)) {
       try {
         const player = await Player.load(member);
@@ -94,8 +98,12 @@ module.exports = {
         player.elo = oldElo;
 
         const isWinner = winnerIds.includes(member.id);
-        if (isWinner) await player.win(gameId);
-        else await player.lose(gameId);
+        const isMvp = mvpNames.includes(player.username.toLowerCase());
+        const isWinBreaker = winBedbreakerName === player.username.toLowerCase();
+        const isLoseBreaker = loseBedbreakerName === player.username.toLowerCase();
+
+        if (isWinner) await player.win(gameId, isMvp, isWinBreaker);
+        else await player.lose(gameId, isMvp, isLoseBreaker);
 
         await player.save();
 
