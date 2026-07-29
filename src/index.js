@@ -210,7 +210,7 @@
       
       setInterval(() => {
         sendStatusEmbed('update').catch(err => console.error('[BotStatusUpdate Error]', err));
-      }, 60000);
+      }, 10000);
     } catch (err) {
       console.error('[FATAL] Error inside ready block:', err);
       await sendStatusEmbed('crash', err);
