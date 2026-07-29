@@ -188,6 +188,12 @@
         console.log('[Startup] Fetching guild members...');
         const members = await guild.members.fetch({ withPresences: false });
 
+        if (guild.members.me.nickname !== 'LuckyRankedBedwars') {
+          guild.members.me.setNickname('LuckyRankedBedwars')
+            .then(() => console.log('[Startup] Successfully set bot nickname to LuckyRankedBedwars'))
+            .catch(err => console.error('[Startup] Failed to set bot nickname:', err.message));
+        }
+
         await displayNameCache.refresh(client, members);
         await mapPicker.loadMapList();
         await cleanInvalidMessages(client);  
