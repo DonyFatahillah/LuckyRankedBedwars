@@ -110,7 +110,7 @@ async function finalizeMatch(guild, channel, game) {
       name: `${game.gameId} | Team ${i + 1}`,
       type: ChannelType.GuildVoice,
       parent: game.categoryId,
-      permissionOverwrites: getPermissionOverwrites(team, PermissionFlagsBits.Connect, false)
+      permissionOverwrites: getPermissionOverwrites(team, PermissionFlagsBits.Connect, false, teams[1 - i])
     }));
 
     const createdTeamVCs = await Promise.all(teamVCTasks);

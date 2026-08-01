@@ -527,7 +527,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
           name: `${hex} | Team ${i + 1}`,
           type: ChannelType.GuildVoice,
           parent: category.id,
-          permissionOverwrites: getPermissionOverwrites(teams[i], PermissionFlagsBits.Connect, false)
+          permissionOverwrites: getPermissionOverwrites(teams[i], PermissionFlagsBits.Connect, false, teams[1 - i])
         }));
       }
     }
@@ -799,7 +799,7 @@ function fallbackRules(teamSize) {
 // -------------------------
 // Permissions
 // -------------------------
-function getPermissionOverwrites(players, permissions, isTextChannel = false) {
+function getPermissionOverwrites(players, permissions, isTextChannel = false, opposingPlayers = []) {
   const perms = Array.isArray(permissions) ? permissions : [permissions];
   const overwrites = [];
   const everyoneRoleId = players[0].guild.roles.everyone.id;
@@ -808,6 +808,23 @@ function getPermissionOverwrites(players, permissions, isTextChannel = false) {
     overwrites.push({ id: everyoneRoleId, deny: [PermissionFlagsBits.ViewChannel] });
   } else {
     overwrites.push({ id: everyoneRoleId, allow: [PermissionFlagsBits.ViewChannel], deny: [PermissionFlagsBits.Connect] });
+    
+    const spectatorRoles = [
+      process.env.PREMIUM_ROLE_ID,
+      process.env.PUGS_ROLE_ID,
+      process.env.PUPS_ROLE_ID,
+      process.env.PITS_ROLE_ID
+    ].filter(Boolean);
+
+    for (const roleId of spectatorRoles) {
+      overwrites.push({ id: roleId, allow: [PermissionFlagsBits.Connect] });
+    }
+  }
+
+  if (opposingPlayers && opposingPlayers.length > 0) {
+    opposingPlayers.forEach(p => {
+      overwrites.push({ id: p.id, deny: [PermissionFlagsBits.Connect] });
+    });
   }
 
   return overwrites.concat(players.map(p => ({ id: p.id, allow: perms })));
