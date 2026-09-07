@@ -30,6 +30,7 @@ const PREMIUM = process.env.PREMIUM_ROLE_ID;
 const PUGS = process.env.PUGS_ROLE_ID;
 const PUPS = process.env.PUPS_ROLE_ID;
 const PITS = process.env.PITS_ROLE_ID;
+const LUCKYSTAFF = process.env.LUCKYSTAFF_ROLE_ID;
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -59,7 +60,7 @@ module.exports = {
     if (roles.has(ROLE2) || roles.has(ROLE3)) claimAmount = Math.max(claimAmount, 250);
     if (roles.has(NITRO) || roles.has(PREMIUM)) claimAmount = Math.max(claimAmount, 200);
     if (roles.has(PUGS)) claimAmount = Math.max(claimAmount, 150);
-    if (roles.has(STAFF) || roles.has(ROLE1) || roles.has(PUPS)) claimAmount = Math.max(claimAmount, 100);
+    if (roles.has(STAFF) || roles.has(ROLE1) || roles.has(PUPS) || roles.has(LUCKYSTAFF)) claimAmount = Math.max(claimAmount, 100);
     if (roles.has(PITS)) claimAmount = Math.max(claimAmount, 50);
 
     if (claimAmount === 0) {
