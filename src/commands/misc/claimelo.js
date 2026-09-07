@@ -5,17 +5,20 @@ const path = require('path');
 require('dotenv').config();
 
 const CLAIMED_PATH = path.join(__dirname, '../../../data/claimedElo.json');
-let claimed = {};
-if (fs.existsSync(CLAIMED_PATH)) {
-  try {
-    claimed = JSON.parse(fs.readFileSync(CLAIMED_PATH, 'utf-8'));
-  } catch (e) {
-    claimed = {};
+
+function loadClaimed() {
+  if (fs.existsSync(CLAIMED_PATH)) {
+    try {
+      return JSON.parse(fs.readFileSync(CLAIMED_PATH, 'utf-8'));
+    } catch (e) {
+      return {};
+    }
   }
+  return {};
 }
 
-function saveClaimed() {
-  fs.writeFileSync(CLAIMED_PATH, JSON.stringify(claimed, null, 2));
+function saveClaimed(data) {
+  fs.writeFileSync(CLAIMED_PATH, JSON.stringify(data, null, 2));
 }
 
 const NITRO = process.env.NITRO_ROLE_ID;
@@ -23,6 +26,10 @@ const STAFF = process.env.STAFF_ROLE_ID;
 const ROLE1 = process.env.CHAMPIONS_ROLE_ID;
 const ROLE2 = process.env.MEDIA_ROLE_ID;
 const ROLE3 = process.env.PROS_ROLE_ID;
+const PREMIUM = process.env.PREMIUM_ROLE_ID;
+const PUGS = process.env.PUGS_ROLE_ID;
+const PUPS = process.env.PUPS_ROLE_ID;
+const PITS = process.env.PITS_ROLE_ID;
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -32,6 +39,8 @@ module.exports = {
   async execute(interaction) {
     const member = interaction.member;
     const userId = member.id;
+
+    const claimed = loadClaimed();
 
     if (claimed[userId]) {
       return interaction.reply({ content: '❌ You already claimed your ELO.', ephemeral: true });
@@ -48,8 +57,10 @@ module.exports = {
 
     // ✅ Priority-based claim (highest eligible role wins)
     if (roles.has(ROLE2) || roles.has(ROLE3)) claimAmount = Math.max(claimAmount, 250);
-    if (roles.has(NITRO)) claimAmount = Math.max(claimAmount, 200);
-    if (roles.has(STAFF) || roles.has(ROLE1)) claimAmount = Math.max(claimAmount, 100);
+    if (roles.has(NITRO) || roles.has(PREMIUM)) claimAmount = Math.max(claimAmount, 200);
+    if (roles.has(PUGS)) claimAmount = Math.max(claimAmount, 150);
+    if (roles.has(STAFF) || roles.has(ROLE1) || roles.has(PUPS)) claimAmount = Math.max(claimAmount, 100);
+    if (roles.has(PITS)) claimAmount = Math.max(claimAmount, 50);
 
     if (claimAmount === 0) {
       return interaction.reply({
@@ -64,7 +75,7 @@ module.exports = {
       claimedAt: new Date().toISOString(),
       amount: claimAmount
     };
-    saveClaimed();
+    saveClaimed(claimed);
 
     return interaction.reply({
       content: `✅ You have claimed **${claimAmount} ELO**!`,

@@ -96,8 +96,7 @@ module.exports = {
         : 'No players found.';
 
       const embed = new EmbedBuilder()
-        .setTitle(`🏁 Season ${seasonName} Archive & Reset Complete`)
-        .setDescription(`Archive saved to \`${archivePath}\``)
+        .setTitle(`Season ${seasonName} Archive & Reset Complete`)
         .addFields(
           { name: '🏆 Top 16 ELO', value: top16Value },
         )
@@ -112,6 +111,14 @@ module.exports = {
       // 6. Final Reset (Perform ONLY after reporting to ensure data integrity)
       await PlayerModel.updateMany({}, { $set: { elo: 0, wins: 0, losses: 0, winstreak: 0, mvps: 0, bedsBroken: 0 } });
       await MatchLogModel.deleteMany({});
+
+      try {
+        const claimedPath = path.join(__dirname, '../../../data/claimedElo.json');
+        fs.writeFileSync(claimedPath, JSON.stringify({}, null, 2));
+        console.log('[endseason] Reset claimedElo.json successfully.');
+      } catch (fsErr) {
+        console.error('[endseason] Failed to reset claimedElo.json:', fsErr);
+      }
       
       try {
         const playerKeys = await redis.keys('player.cache:*');
