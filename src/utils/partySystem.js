@@ -91,7 +91,19 @@ async function removeFromAllParties(userId) {
   await Promise.all(saveTasks);
 }
 
-async function createParty(leaderId, maxMembers = DEFAULT_MAX_MEMBERS) {
+async function createParty(leaderId, maxMembers = null) {
+  if (maxMembers === null) {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const limitPath = path.join(__dirname, '../../data/partylimit.json');
+      const limitData = JSON.parse(fs.readFileSync(limitPath, 'utf-8'));
+      maxMembers = limitData.limit || 4;
+    } catch (err) {
+      maxMembers = 4;
+    }
+  }
+
   if (getPartyByUser(leaderId)) return null;
   await removeFromAllParties(leaderId);
 
