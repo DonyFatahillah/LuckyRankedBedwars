@@ -288,7 +288,14 @@ module.exports = {
         if (newLimit < 1) return interaction.editReply({ content: '❌ Limit must be at least 1.', ephemeral: false });
 
         saveGlobalLimit(newLimit);
-        return interaction.editReply({ content: `✅ Global party slot limit set to **${newLimit}**.`, ephemeral: false });
+        
+        const activeParties = getAllParties();
+        for (const p of activeParties) {
+          p.maxMembers = newLimit;
+          await saveParties(p.leaderId);
+        }
+
+        return interaction.editReply({ content: `✅ Global party slot limit set to **${newLimit}**. All ${activeParties.length} active parties have been updated!`, ephemeral: false });
       }
 
       case 'autowarp': {
