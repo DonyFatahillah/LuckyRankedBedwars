@@ -232,6 +232,9 @@
 
       await setupResultListener(client);
       await setupAllstarsListener(client);
+      
+      const { setupDebugStartListener } = require('./utils/debugStartListener');
+      await setupDebugStartListener(client);
 
       if (process.env.GUILD_ID) {
         const guild = await client.guilds.fetch(process.env.GUILD_ID); 
