@@ -15,6 +15,7 @@ module.exports = {
 
     if (commandName === 'qs') commandName = 'queuestats';
     if (commandName === 'lb') commandName = 'leaderboard';
+    if (commandName === 'rules') commandName = 'queuerules';
 
     const command = message.client.commands.get(commandName);
     if (!command) return; 
@@ -28,7 +29,12 @@ module.exports = {
       channel: message.channel,
       guild: message.guild,
       options: {
-        getString: (name) => args[0] || null,
+        getString: (name) => {
+          if (!args[0]) return null;
+          // If the argument is a mention, ignore it for strings
+          if (args[0].startsWith('<@') && args[0].endsWith('>')) return null;
+          return args[0];
+        },
         getUser: (name) => message.mentions.users.first() || null,
       },
       deferred: false,

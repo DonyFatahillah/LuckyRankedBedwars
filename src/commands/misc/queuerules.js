@@ -15,21 +15,27 @@ function loadQueueRules() {
   }
 }
 
-function formatSection(title, items) {
-  return items && items.length > 0 ? `**${title}**\n- ${items.join('\n- ')}\n` : '';
+function formatSection(title, items, emojiPrefix) {
+  if (!items || items.length === 0) return '';
+  return `**${title}**\n${emojiPrefix}- ${items.join(`\n${emojiPrefix}- `)}\n`;
 }
 
 function buildRulesEmbed(gamemode, rules) {
+  const allowedEmoji = '<:allowed:1438390107324420166>';
+  const midGameEmoji = '<:mid_game:1438845379650130111>';
+  const lateGameEmoji = '<:late_game:1438390063569567874>';
+  const bannedEmoji = '<:not_allowed:1438390082146144367>';
+
   const sections = [
-    formatSection('✅ Allowed', rules.allowed),
-    formatSection('💎 After Diamond I', rules.after_diamond_i),
-    formatSection('💎💎 After Diamond II', rules.after_diamond_ii),
-    formatSection('💎💎💎 After Diamond III', rules.after_diamond_iii),
-    formatSection('💚 After Emerald I', rules.after_emerald_i),
-    formatSection('💚💚 After Emerald II', rules.after_emerald_ii),
-    formatSection('💚💚💚 After Emerald III', rules.after_emerald_iii),
-    formatSection('⚠️ After Any Bed Break', rules.after_any_bed_break),
-    formatSection('⛔ Banned', rules.banned)
+    formatSection('Allowed', rules.allowed, allowedEmoji),
+    formatSection('After Diamond I', rules.after_diamond_i, midGameEmoji),
+    formatSection('After Diamond II', rules.after_diamond_ii, midGameEmoji),
+    formatSection('After Diamond III', rules.after_diamond_iii, midGameEmoji),
+    formatSection('After Emerald I', rules.after_emerald_i, lateGameEmoji),
+    formatSection('After Emerald II', rules.after_emerald_ii, lateGameEmoji),
+    formatSection('After Emerald III', rules.after_emerald_iii, lateGameEmoji),
+    formatSection('After Any Bed Break', rules.after_any_bed_break, lateGameEmoji),
+    formatSection('Banned', rules.banned, bannedEmoji)
   ];
 
   return new EmbedBuilder()
@@ -41,7 +47,15 @@ function buildRulesEmbed(gamemode, rules) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('queuerules')
-    .setDescription('View the current season queue rules (3v3 & 4v4)'),
+    .setDescription('View the current season queue rules (3v3 or 4v4)')
+    .addStringOption(option =>
+      option.setName('mode')
+        .setDescription('Select the gamemode rules to view (Defaults to 4v4)')
+        .addChoices(
+          { name: '3v3', value: '3v3' },
+          { name: '4v4', value: '4v4' }
+        )
+        .setRequired(false)),
 
   async execute(interaction) {
     const rules = loadQueueRules();
@@ -49,16 +63,14 @@ module.exports = {
       return interaction.reply({ content: '❌ Failed to load queue rules.', ephemeral: true });
     }
 
-    const embeds = [];
+    const mode = interaction.options.getString('mode') || '4v4';
 
-    if (rules['3v3']) {
-      embeds.push(buildRulesEmbed('3v3', rules['3v3']));
+    if (!rules[mode]) {
+      return interaction.reply({ content: `❌ No rules found for **${mode}**.`, ephemeral: true });
     }
 
-    if (rules['4v4']) {
-      embeds.push(buildRulesEmbed('4v4', rules['4v4']));
-    }
+    const embed = buildRulesEmbed(mode, rules[mode]);
 
-    return interaction.reply({ embeds });
+    return interaction.reply({ embeds: [embed] });
   }
 };
