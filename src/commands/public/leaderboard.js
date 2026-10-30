@@ -13,11 +13,24 @@ const { getRankByElo } = require('../../utils/EloRank');
 const PlayerModel = require('../../models/PlayerSchema');
 
 const PAGE_SIZE = 10;
+const LEADERBOARD_MODES = {
+  normal: { label: 'NORMAL (3v3 / 4v4)', elo: 'elo', wins: 'wins', losses: 'losses' },
+  doubles: { label: 'DOUBLES (2v2)', elo: 'double_elo', wins: 'double_wins', losses: 'double_losses' }
+};
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('leaderboard')
-    .setDescription('Show paginated leaderboard by ELO')
+    .setDescription('Show the normal or doubles ELO leaderboard')
+    .addStringOption(option =>
+      option.setName('mode')
+        .setDescription('Choose normal (shared 3v3 / 4v4 stats) or doubles; defaults to normal')
+        .setRequired(false)
+        .addChoices(
+          { name: 'Normal (3v3 / 4v4)', value: 'normal' },
+          { name: 'Doubles (2v2)', value: 'doubles' }
+        )
+    )
     .addStringOption(option => 
       option.setName('season')
         .setDescription('Optional season name to view archived data (e.g., S1)')
@@ -27,6 +40,8 @@ module.exports = {
   async execute(interaction) {
     await interaction.deferReply();
     const season = interaction.options.getString('season');
+    const mode = interaction.options.getString('mode') || 'normal';
+    const stats = LEADERBOARD_MODES[mode];
 
     try {
       let currentPage = 0;
@@ -39,24 +54,27 @@ module.exports = {
           const archiveData = JSON.parse(fs.readFileSync(archivePath, 'utf-8'));
           players = archiveData.players || [];
           isArchived = true;
-          // Sort archived players by ELO just in case
-          players.sort((a, b) => (b.elo || 0) - (a.elo || 0));
+          if (mode === 'doubles' && !players.some(p => p.double_elo != null)) {
+            return interaction.editReply({ content: `❌ No doubles leaderboard data is available for season \`${season}\`.` });
+          }
+          // Sort archives by the selected mode's ELO.
+          players.sort((a, b) => (b[stats.elo] || 0) - (a[stats.elo] || 0));
         } else {
           return interaction.editReply({ content: `❌ Archive for season \`${season}\` not found.` });
         }
       } else {
-        // Fetch all players from DB, sorted by ELO descending
-        players = await PlayerModel.find({}).sort({ elo: -1 }).lean();
+        // Normal combines 3v3 / 4v4; doubles uses its own independent stats.
+        players = await PlayerModel.find({}).sort({ [stats.elo]: -1 }).lean();
       }
 
-      console.log(`[Leaderboard Debug] Players found: ${players.length} (Archived: ${isArchived})`);
+      console.log(`[Leaderboard Debug] Players found: ${players.length} (Mode: ${mode}, Archived: ${isArchived})`);
 
       const validEntries = players.map(p => ({
         userId: p.userId,
-        elo: p.elo || 0,
+        elo: p[stats.elo] || 0,
         username: p.ingameUsername || p.discordUsername || `Unknown (${p.userId.slice(-4)})`,
-        wins: p.wins || 0,
-        losses: p.losses || 0
+        wins: p[stats.wins] || 0,
+        losses: p[stats.losses] || 0
       }));
 
       const totalPages = Math.ceil(validEntries.length / PAGE_SIZE) || 1;
@@ -72,7 +90,7 @@ module.exports = {
         });
 
         const embed = new EmbedBuilder()
-          .setTitle(isArchived ? `🏆 ELO LEADERBOARD - SEASON ${season}` : '🏆 ELO LEADERBOARD')
+          .setTitle(`🏆 ${stats.label} ELO LEADERBOARD${isArchived ? ` - SEASON ${season}` : ''}`)
           .setDescription(lines.join('\n') || '*No players found.*')
           .setColor(0xFFD700)
           .setFooter({ text: `Page ${page + 1} of ${totalPages}${isArchived ? ' (Archived Data)' : ''}` })
