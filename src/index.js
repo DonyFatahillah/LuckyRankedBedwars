@@ -5,6 +5,7 @@
   const fs = require('fs');
   const path = require('path');
   const addBedBrokenField = require('./scripts/addBedBreakField');
+  const migrateDoubleStats = require('./scripts/migrateDoubleStats');
   const { loadParties } = require('./utils/partySystem');
   const { cleanupExpiredPunishments } = require('./utils/punishmentManager');
   const displayNameCache = require('./cache/displayNameCache');
@@ -24,7 +25,11 @@
 
   try {
     await connectDB();
-    // Run maintenance tasks in background
+    // Run maintenance tasks in background without delaying bot startup.
+    migrateDoubleStats().catch(() => {
+      // The migration logs the error details; retry missing fields on next startup.
+      console.error('[Startup] Doubles stats migration failed in background. Bot startup will continue; migration will retry on next restart.');
+    });
     auditUsers().catch(console.error);
 
     ({ loadLogs } = require('./utils/matchLogger'));
