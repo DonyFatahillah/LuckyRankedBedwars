@@ -19,7 +19,12 @@ const playerSchema = new mongoose.Schema({
   linkCode: { type: String, default: null },
   linkExpiry: { type: Date, default: null },
   isPremium: { type: Boolean, default: false },
-  premium: { type: Object, default: null }
+  premium: { type: Object, default: null },
+  double_elo: { type: Number, default: 0 },
+  double_wins: { type: Number, default: 0 },
+  double_losses: { type: Number, default: 0 },
+  double_winstreaks: { type: Number, default: 0 },
+  double_bedsbroken: { type: Number, default: 0 }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Player', playerSchema, 'PlayerStats');

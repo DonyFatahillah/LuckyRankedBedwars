@@ -30,6 +30,12 @@ class Player {
     this.lastPlayedAt = data.lastPlayedAt ?? 0;
     this.isPremium = data.isPremium ?? false;
     this.premium = data.premium ?? null;
+    
+    this.double_elo = isNaN(parseInt(data.double_elo)) ? 0 : parseInt(data.double_elo);
+    this.double_wins = data.double_wins ?? 0;
+    this.double_losses = data.double_losses ?? 0;
+    this.double_winstreaks = data.double_winstreaks ?? 0;
+    this.double_bedsbroken = data.double_bedsbroken ?? 0;
 
     if (Date.now() - this.lastPlayedAt > 7 * 24 * 60 * 60 * 1000) {
       this.recentlyPlayed = [];
@@ -60,7 +66,12 @@ class Player {
           displayUsername: doc.displayUsername,
           lastIgnUpdate: doc.lastIgnUpdate,
           isPremium: doc.isPremium,
-          premium: doc.premium
+          premium: doc.premium,
+          double_elo: doc.double_elo ?? 0,
+          double_wins: doc.double_wins ?? 0,
+          double_losses: doc.double_losses ?? 0,
+          double_winstreaks: doc.double_winstreaks ?? 0,
+          double_bedsbroken: doc.double_bedsbroken ?? 0
         };
       } else {
         // Defaults if no doc found
@@ -79,7 +90,12 @@ class Player {
           displayUsername: null,
           lastIgnUpdate: 0,
           isPremium: false,
-          premium: null
+          premium: null,
+          double_elo: 0,
+          double_wins: 0,
+          double_losses: 0,
+          double_winstreaks: 0,
+          double_bedsbroken: 0
         };
       }
       // Save to cache for future requests
@@ -280,7 +296,12 @@ class Player {
       displayUsername: this.displayUsername,
       lastIgnUpdate: this.lastIgnUpdate,
       isPremium: this.isPremium,
-      premium: this.premium
+      premium: this.premium,
+      double_elo: this.double_elo,
+      double_wins: this.double_wins,
+      double_losses: this.double_losses,
+      double_winstreaks: this.double_winstreaks,
+      double_bedsbroken: this.double_bedsbroken
     };
 
     // Update Redis Cache
@@ -324,7 +345,12 @@ class Player {
       displayUsername: this.displayUsername,
       lastIgnUpdate: this.lastIgnUpdate,
       isPremium: this.isPremium,
-      premium: this.premium
+      premium: this.premium,
+      double_elo: this.double_elo,
+      double_wins: this.double_wins,
+      double_losses: this.double_losses,
+      double_winstreaks: this.double_winstreaks,
+      double_bedsbroken: this.double_bedsbroken
     };
   }
 
