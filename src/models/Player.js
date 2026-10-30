@@ -21,6 +21,8 @@ class Player {
     this.displayUsername = data.displayUsername || null;
     this.wins = data.wins ?? 0;
     this.losses = data.losses ?? 0;
+    this.kills = data.kills ?? 0;
+    this.deaths = data.deaths ?? 0;
     this.winstreak = data.winstreak ?? 0;
     this.topKills = data.mvps ?? 0;
     this.bedsBroken = data.bedsBroken ?? 0;
@@ -34,6 +36,8 @@ class Player {
     this.double_elo = isNaN(parseInt(data.double_elo)) ? 0 : parseInt(data.double_elo);
     this.double_wins = data.double_wins ?? 0;
     this.double_losses = data.double_losses ?? 0;
+    this.double_kills = data.double_kills ?? 0;
+    this.double_deaths = data.double_deaths ?? 0;
     this.double_winstreaks = data.double_winstreaks ?? 0;
     this.double_bedsbroken = data.double_bedsbroken ?? 0;
 
@@ -55,6 +59,8 @@ class Player {
           elo: doc.elo,
           wins: doc.wins,
           losses: doc.losses,
+          kills: doc.kills ?? 0,
+          deaths: doc.deaths ?? 0,
           winstreak: doc.winstreak,
           mvps: doc.mvps,
           bedsBroken: doc.bedsBroken,
@@ -70,6 +76,8 @@ class Player {
           double_elo: doc.double_elo ?? 0,
           double_wins: doc.double_wins ?? 0,
           double_losses: doc.double_losses ?? 0,
+          double_kills: doc.double_kills ?? 0,
+          double_deaths: doc.double_deaths ?? 0,
           double_winstreaks: doc.double_winstreaks ?? 0,
           double_bedsbroken: doc.double_bedsbroken ?? 0
         };
@@ -79,6 +87,8 @@ class Player {
           elo: redisElo,
           wins: 0,
           losses: 0,
+          kills: 0,
+          deaths: 0,
           winstreak: 0,
           mvps: 0,
           bedsBroken: 0,
@@ -94,6 +104,8 @@ class Player {
           double_elo: 0,
           double_wins: 0,
           double_losses: 0,
+          double_kills: 0,
+          double_deaths: 0,
           double_winstreaks: 0,
           double_bedsbroken: 0
         };
@@ -285,6 +297,8 @@ class Player {
       elo: this.elo,
       wins: this.wins,
       losses: this.losses,
+      kills: this.kills,
+      deaths: this.deaths,
       winstreak: this.winstreak,
       mvps: this.topKills,
       bedsBroken: this.bedsBroken,
@@ -300,6 +314,8 @@ class Player {
       double_elo: this.double_elo,
       double_wins: this.double_wins,
       double_losses: this.double_losses,
+      double_kills: this.double_kills,
+      double_deaths: this.double_deaths,
       double_winstreaks: this.double_winstreaks,
       double_bedsbroken: this.double_bedsbroken
     };
@@ -334,6 +350,8 @@ class Player {
     return {
       wins: this.wins,
       losses: this.losses,
+      kills: this.kills,
+      deaths: this.deaths,
       winstreak: this.winstreak,
       topKills: this.topKills,
       bedsBroken: this.bedsBroken,
@@ -349,6 +367,8 @@ class Player {
       double_elo: this.double_elo,
       double_wins: this.double_wins,
       double_losses: this.double_losses,
+      double_kills: this.double_kills,
+      double_deaths: this.double_deaths,
       double_winstreaks: this.double_winstreaks,
       double_bedsbroken: this.double_bedsbroken
     };

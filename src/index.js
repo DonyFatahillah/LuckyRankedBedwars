@@ -6,6 +6,7 @@
   const path = require('path');
   const addBedBrokenField = require('./scripts/addBedBreakField');
   const migrateDoubleStats = require('./scripts/migrateDoubleStats');
+  const migrateKillDeathStats = require('./scripts/migrateKillDeathStats');
   const { loadParties } = require('./utils/partySystem');
   const { cleanupExpiredPunishments } = require('./utils/punishmentManager');
   const displayNameCache = require('./cache/displayNameCache');
@@ -29,6 +30,10 @@
     migrateDoubleStats().catch(() => {
       // The migration logs the error details; retry missing fields on next startup.
       console.error('[Startup] Doubles stats migration failed in background. Bot startup will continue; migration will retry on next restart.');
+    });
+    migrateKillDeathStats().catch(() => {
+      // The migration logs the error details; retry missing fields on next startup.
+      console.error('[Startup] Kill/death stats migration failed in background. Bot startup will continue; migration will retry on next restart.');
     });
     auditUsers().catch(console.error);
 

@@ -5,6 +5,8 @@ const playerSchema = new mongoose.Schema({
   elo: { type: Number, default: 0 },
   wins: { type: Number, default: 0 },
   losses: { type: Number, default: 0 },
+  kills: { type: Number, default: 0 },
+  deaths: { type: Number, default: 0 },
   winstreak: { type: Number, default: 0 },
   mvps: { type: Number, default: 0 },
   bedsBroken: { type: Number, default: 0 },
@@ -23,6 +25,8 @@ const playerSchema = new mongoose.Schema({
   double_elo: { type: Number, default: 0 },
   double_wins: { type: Number, default: 0 },
   double_losses: { type: Number, default: 0 },
+  double_kills: { type: Number, default: 0 },
+  double_deaths: { type: Number, default: 0 },
   double_winstreaks: { type: Number, default: 0 },
   double_bedsbroken: { type: Number, default: 0 }
 }, { timestamps: true });
