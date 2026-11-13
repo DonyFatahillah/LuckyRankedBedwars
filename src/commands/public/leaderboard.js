@@ -14,8 +14,8 @@ const PlayerModel = require('../../models/PlayerSchema');
 
 const PAGE_SIZE = 10;
 const LEADERBOARD_MODES = {
-  normal: { label: 'NORMAL (3v3 / 4v4)', elo: 'elo', wins: 'wins', losses: 'losses' },
-  doubles: { label: 'DOUBLES (2v2)', elo: 'double_elo', wins: 'double_wins', losses: 'double_losses' }
+  normal: { label: 'NORMAL (3v3 / 4v4)', elo: 'elo', wins: 'wins', losses: 'losses', kills: 'kills', deaths: 'deaths' },
+  doubles: { label: 'DOUBLES (2v2)', elo: 'double_elo', wins: 'double_wins', losses: 'double_losses', kills: 'double_kills', deaths: 'double_deaths' }
 };
 
 module.exports = {
@@ -74,7 +74,10 @@ module.exports = {
         elo: p[stats.elo] || 0,
         username: p.ingameUsername || p.discordUsername || `Unknown (${p.userId.slice(-4)})`,
         wins: p[stats.wins] || 0,
-        losses: p[stats.losses] || 0
+        losses: p[stats.losses] || 0,
+        // Old archives did not record combat totals; do not imply they were zero.
+        kills: p[stats.kills] ?? (isArchived ? null : 0),
+        deaths: p[stats.deaths] ?? (isArchived ? null : 0)
       }));
 
       const totalPages = Math.ceil(validEntries.length / PAGE_SIZE) || 1;
@@ -86,7 +89,7 @@ module.exports = {
         const lines = pageEntries.map((entry, index) => {
           const rankData = getRankByElo(entry.elo);
           const rank = rankData ? rankData.name : 'Unknown';
-          return `**${page * PAGE_SIZE + index + 1}.** \`${entry.username}\` — **${entry.elo}** ELO — **${rank}** (W: ${entry.wins} / L: ${entry.losses})`;
+          return `**${page * PAGE_SIZE + index + 1}.** \`${entry.username}\` — **${entry.elo}** ELO — **${rank}** (W: ${entry.wins} / L: ${entry.losses} | K: ${entry.kills ?? 'N/A'} / D: ${entry.deaths ?? 'N/A'})`;
         });
 
         const embed = new EmbedBuilder()

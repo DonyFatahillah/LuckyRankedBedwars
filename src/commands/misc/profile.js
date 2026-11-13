@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require('discord.js');
 const { createCanvas, loadImage, registerFont } = require('canvas');
 const axios = require('axios');
 const path = require('path');
@@ -99,6 +99,22 @@ module.exports = {
       return interaction.editReply({ content: '❌ Unable to find that user data' });
     }
 
+    // Keep MVP counts on the existing card; actual kills/deaths are separate stats.
+    const combatData = playerData || stats;
+    const combatFields = [
+      { name: 'Normal (3v3 / 4v4)', kills: combatData.kills ?? 0, deaths: combatData.deaths ?? 0 },
+      { name: 'Doubles (2v2)', kills: combatData.double_kills ?? 0, deaths: combatData.double_deaths ?? 0 }
+    ].map(({ name, kills, deaths }) => ({
+      name,
+      value: `Kills: **${kills}**\nDeaths: **${deaths}**\nK/D: **${(deaths === 0 ? kills : kills / deaths).toFixed(2)}**`,
+      inline: true
+    }));
+    const combatEmbed = new EmbedBuilder()
+      .setTitle('Combat stats')
+      .setColor(0xFFD700)
+      .addFields(combatFields)
+      .setFooter({ text: 'K/D uses kills when deaths are 0. MVPs are separate from kills.' });
+
     const playerObj = member ? await Player.load(member) : null;
     const skinRenderUrl = (playerData?.ingameUsername || playerObj?.ingameUsername) 
       ? `https://mc-heads.net/body/${playerData?.ingameUsername || playerObj.ingameUsername}/300`
@@ -140,7 +156,7 @@ module.exports = {
     // Right-side stats
     write(rank.name, 900, 210, 50);          // Rank name
     write(elo, 858, 296, 29, 'left');       // ELO
-    write(stats.topKills, 863, 410, 35);     // Top Kills
+    write(stats.topKills, 863, 410, 35);     // MVP count (not actual kills)
     write(stats.wins, 1037, 410, 35);        // Wins
     write(stats.bedsBroken, 863, 530, 35);   // Beds Broken
     write(stats.losses, 1037, 530, 35);      // Losses
@@ -152,6 +168,7 @@ module.exports = {
 
     await interaction.editReply({
       content: `📜 Profile of **${mcName}**`,
+      embeds: [combatEmbed],
       files: [attachment]
     });
   }
