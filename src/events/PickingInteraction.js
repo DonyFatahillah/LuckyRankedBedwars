@@ -136,7 +136,7 @@ async function handlePicking(interaction) {
     } else {
       const mapPicker = require('../utils/mapPicker');
       const { finalizeMatch } = require('../utils/matchFinalizer');
-      const selectedMap = mapPicker.getRandomMap();
+      const selectedMap = mapPicker.getRandomMap(String(game.queueType || '').startsWith('2v2') ? '2v2' : undefined);
       game.map = selectedMap;
       game.status = 'pending';
       await game.save();

@@ -1,169 +1,93 @@
 const { createCanvas, loadImage, registerFont } = require('canvas');
-
-try {
-  registerFont(require('path').join(__dirname, '../../assets/PlusJakartaSans-Bold.ttf'), { family: 'PlusJakartaSans', weight: 'bold' });
-} catch (e) {}
-
 const { AttachmentBuilder } = require('discord.js');
 const path = require('path');
 const { getRankByElo } = require('./EloRank');
+const { formatScoreStats } = require('./scoreStats');
+
+try {
+  registerFont(path.join(__dirname, '../../assets/PlusJakartaSans-Bold.ttf'), { family: 'PlusJakartaSans', weight: 'bold' });
+} catch (e) {}
 
 async function generateScoreImage(gameId, winningTeam, results, mvp, winBedbreaker, loseBedbreaker, mapName = null) {
-  let bg;
-  let width = 800;
-  let height = 600;
-  
-  try {
-    bg = await loadImage(path.join(__dirname, '../../assets/scoring_canvas.png'));
-    width = bg.width;
-    height = bg.height;
-  } catch (err) {}
-
-  const canvas = createCanvas(width, height);
-  const ctx = canvas.getContext('2d');
-
-  // Background
-  if (bg) {
-    ctx.drawImage(bg, 0, 0, width, height);
-  } else {
-    // Fallback if image is missing
-    ctx.fillStyle = '#1e1e1e';
-    ctx.fillRect(0, 0, width, height);
-  }
-
-  // Split into winners and losers
+  // Draw a wider table instead of stretching the old three-column template.
+  const width = 1800;
+  const rowHeight = 86;
   const winners = results.filter(p => p.result.includes('Win'));
   const losers = results.filter(p => p.result.includes('Loss'));
+  const height = Math.max(750, 330 + (winners.length + losers.length) * rowHeight);
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#172447';
+  ctx.fillRect(0, 0, width, height);
 
-  // Load MVP & Bedbreaker logos beforehand
-  let mvpLogo, bedLogo;
-  try { mvpLogo = await loadImage(path.join(__dirname, '../../assets/mvp_logo.png')); } catch (e) {}
-  try { bedLogo = await loadImage(path.join(__dirname, '../../assets/bed_logo.png')); } catch (e) {}
-
-  // Helper to draw a team block (fixed start to align with stripes)
-  async function drawTeam(players, startY, isWinner) {
-    const rowHeight = 84.5; 
-    let currentY = startY;
-
-    for (const player of players) {
-      // 1. Draw Avatar (fetching from mc-heads.net)
-      const avatarX = 265;
-      const avatarSize = 56;
-      const avatarYOffset = (rowHeight - avatarSize) / 2;
-      try {
-        const avatar = await loadImage(`https://mc-heads.net/avatar/${player.name}/${avatarSize}`);
-        ctx.drawImage(avatar, avatarX, currentY + avatarYOffset, avatarSize, avatarSize);
-      } catch (err) {
-        ctx.fillStyle = '#555555';
-        ctx.fillRect(avatarX, currentY + avatarYOffset, avatarSize, avatarSize);
-      }
-
-      // 2. Draw Name
-      ctx.font = 'bold 29px PlusJakartaSans, sans-serif';
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      const nameX = 340;
-      const nameY = currentY + (rowHeight / 2);
-      ctx.fillText(player.nickname, nameX, nameY);
-
-      // 3. Draw MVP/Bedbreaker pills if applicable
-      let pillX = nameX + ctx.measureText(player.nickname).width + 30; // Increased spacing
-
-      const logoHeight = 95; // Increased by 10px
-
-      // Check if they are MVP
-      if (mvp && mvp.includes(player.nickname)) {
-        if (mvpLogo) {
-          const scaledWidth = mvpLogo.width * (logoHeight / mvpLogo.height);
-          ctx.drawImage(mvpLogo, pillX, nameY - (logoHeight / 2), scaledWidth, logoHeight);
-          pillX += scaledWidth + 10;
-        } else {
-          ctx.fillStyle = '#ffd700';
-          ctx.font = 'bold 13px PlusJakartaSans, sans-serif';
-          ctx.fillText('⭐ MVP', pillX, nameY);
-          pillX += 75;
-        }
-      }
-      
-      // Check if they are Bedbreaker
-      if ((winBedbreaker && winBedbreaker.includes(player.nickname)) || (loseBedbreaker && loseBedbreaker.includes(player.nickname))) {
-        if (bedLogo) {
-          const scaledWidth = bedLogo.width * (logoHeight / bedLogo.height);
-          ctx.drawImage(bedLogo, pillX, nameY - (logoHeight / 2), scaledWidth, logoHeight);
-          pillX += scaledWidth + 10;
-        }
-      }
-
-      // 4. Draw ELO Change
-      const eloChange = player.newElo - player.oldElo;
-      const changeText = isWinner ? `(+${eloChange})` : `(–${Math.abs(eloChange)})`; // Using en-dash for longer negative symbol
-      
-      const oldRank = getRankByElo(player.oldElo).name;
-      const newRank = getRankByElo(player.newElo).name;
-      const rankText = (oldRank !== newRank) ? `${oldRank} ➝ ${newRank}` : newRank;
-      
-      ctx.font = 'bold 30px PlusJakartaSans, sans-serif';
-      ctx.textAlign = 'center';
-      
-      // X coordinates for the two columns (centered exactly under the headers)
-      const rankX = 916; 
-      const eloX = 1160;
-      
-      // Draw Rank Name in the Rank column
-      ctx.font = 'bold 20px PlusJakartaSans, sans-serif'; // Decreased by 10px
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(rankText, rankX, nameY);
-
-      // Draw Elo numbers in the Elo Change column
-      ctx.font = 'bold 26px PlusJakartaSans, sans-serif';
-      
-      const arrowX = 1150;
-      
-      // Draw arrow
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.font = 'bold 26px PlusJakartaSans, sans-serif';
-      ctx.fillText('➔', arrowX, nameY);
-      
-      const oldEloX = 1087; // <-- Fixed X coordinate for old Elo
-      const newEloX = 1205; // <-- Fixed X coordinate for new Elo
-      
-      // Draw old elo
-      ctx.textAlign = 'center';
-      ctx.fillText(`${player.oldElo}`, oldEloX, nameY);
-      
-      // Draw new elo
-      ctx.textAlign = 'center';
-      ctx.fillText(`${player.newElo}`, newEloX, nameY);
-      
-      // Draw elo change (+/-)
-      const eloChangeFontSize = 22; // <-- Change this number to configure the (+25) text size
-      ctx.font = `bold ${eloChangeFontSize}px PlusJakartaSans, sans-serif`;
-      ctx.fillStyle = isWinner ? '#55ff55' : '#ff5555';
-      
-      const changeX = 1280; // <-- Fixed X coordinate for the (+/-) number
-      ctx.fillText(`${changeText}`, changeX, nameY);
-
-      currentY += rowHeight;
-    }
+  function text(value, x, y, size = 23, color = '#ffffff', align = 'left', maxWidth) {
+    ctx.font = `bold ${size}px PlusJakartaSans, sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    if (maxWidth) ctx.fillText(String(value), x, y, maxWidth);
+    else ctx.fillText(String(value), x, y);
   }
 
-  // Fixed Y-coordinates to perfectly align with the topmost stripes of the boxes
-  await drawTeam(winners, 105, true);
-  await drawTeam(losers, 477, false);
+  text('Lucky Ranked Bedwars • Match Results', 40, 38, 30);
+  text(`Game ${gameId}${mapName ? ` | ${mapName}` : ''}`, 40, 78, 21, '#bdcae6', 'left', 1700);
+  const columns = [
+    ['PLAYER', 115], ['KILLS', 580], ['DEATHS', 685], ['K/D', 795],
+    ['DIAMONDS', 930], ['EMERALDS', 1080], ['RANK', 1300], ['ELO CHANGE', 1595]
+  ];
+  ctx.fillStyle = '#293d70';
+  ctx.fillRect(40, 110, 1720, 48);
+  for (const [label, x] of columns) text(label, x, 134, 19, '#dbe6ff', label === 'PLAYER' ? 'left' : 'center');
 
-  // Top left text
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 30px PlusJakartaSans, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  const titleText = mapName ? `Game ${gameId} | ${mapName}` : `Game ${gameId}`;
-  ctx.fillText(titleText, 50, 30);
+  function contains(names, username) {
+    return (Array.isArray(names) ? names : names ? [names] : [])
+      .some(name => String(name).toLowerCase() === String(username).toLowerCase());
+  }
 
-  // Convert to discord attachment
-  const buffer = canvas.toBuffer('image/png');
-  return new AttachmentBuilder(buffer, { name: `score-${gameId}.png` });
+  async function drawTeam(players, y, isWinner) {
+    text(isWinner ? 'WINNING TEAM' : 'LOSING TEAM', 50, y + 18, 20, isWinner ? '#77e3b0' : '#ffb1bf');
+    y += 40;
+    for (const [index, player] of players.entries()) {
+      ctx.fillStyle = isWinner ? (index % 2 ? '#204b49' : '#285654') : (index % 2 ? '#51324d' : '#603b58');
+      ctx.fillRect(40, y, 1720, rowHeight - 3);
+      const middle = y + rowHeight / 2;
+      const username = player.username || player.nickname || player.name || 'Unknown';
+      try {
+        const avatar = await loadImage(`https://mc-heads.net/avatar/${encodeURIComponent(player.name || username)}/52`);
+        ctx.drawImage(avatar, 55, y + 16, 52, 52);
+      } catch (err) {
+        ctx.fillStyle = '#53617d';
+        ctx.fillRect(55, y + 16, 52, 52);
+      }
+      text(username, 120, middle - 10, 25, '#ffffff', 'left', 380);
+      const badges = [];
+      if (contains(mvp, username)) badges.push('MVP');
+      if (contains(winBedbreaker, username) || contains(loseBedbreaker, username)) badges.push('BEDBREAKER');
+      if (badges.length) text(badges.join(' • '), 120, middle + 20, 15, '#ffdc72', 'left', 380);
+
+      const stats = formatScoreStats(player);
+      for (const [key, x] of [['kills', 580], ['deaths', 685], ['kd', 795], ['diamonds', 930], ['emeralds', 1080]]) {
+        text(stats[key], x, middle, 24, key === 'diamonds' ? '#78d8ff' : key === 'emeralds' ? '#77e3b0' : '#ffffff', 'center', 120);
+      }
+      const oldRank = getRankByElo(player.oldElo).name;
+      const newRank = getRankByElo(player.newElo).name;
+      if (oldRank === newRank) text(newRank, 1300, middle, 20, '#ffffff', 'center', 230);
+      else {
+        text(`${oldRank} →`, 1300, middle - 13, 18, '#bdcae6', 'center', 230);
+        text(newRank, 1300, middle + 13, 20, '#ffffff', 'center', 230);
+      }
+      const change = player.newElo - player.oldElo;
+      text(`${player.oldElo} → ${player.newElo}`, 1595, middle - 13, 23, '#ffffff', 'center', 280);
+      text(`(${change >= 0 ? '+' : ''}${change})`, 1595, middle + 17, 21, change >= 0 ? '#77e3b0' : '#ff9bac', 'center');
+      y += rowHeight;
+    }
+    return y;
+  }
+
+  let y = await drawTeam(winners, 170, true);
+  y = await drawTeam(losers, y + 18, false);
+  text('Match stats • N/A = not reported • With 0 deaths, K/D equals kills.', 40, Math.max(y + 24, height - 28), 17, '#bdcae6');
+  return new AttachmentBuilder(canvas.toBuffer('image/png'), { name: `score-${gameId}.png` });
 }
 
 module.exports = { generateScoreImage };

@@ -11,6 +11,7 @@ module.exports = {
         .setRequired(false)
         .addChoices(
           { name: '1v1', value: '1v1' },
+          { name: '2v2', value: '2v2' },
           { name: '3v3', value: '3v3' },
           { name: '4v4', value: '4v4' }
         )
@@ -45,7 +46,14 @@ module.exports = {
       ];
 
       // Slice the arrays depending on the requested team size
-      const results = [...allWinners.slice(0, count), ...allLosers.slice(0, count)];
+      const results = [...allWinners.slice(0, count), ...allLosers.slice(0, count)]
+        .map((player, index) => ({
+          ...player,
+          kills: 8 + index,
+          deaths: index === 0 ? 0 : 3 + index,
+          diamonds: 12 + index,
+          emeralds: 6 + index
+        }));
 
       // Call the image generator
       const attachment = await generateScoreImage(gameId, winningTeam, results, mvp, winBedbreaker, loseBedbreaker);

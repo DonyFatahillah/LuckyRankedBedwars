@@ -1,6 +1,8 @@
 const { getActiveGames, deleteActiveGame } = require('../queue/queueManager');
 const Player = require('../models/Player');
 const { isAllRankQueue } = require('../config/eloQueues');
+const { getMatchDisplayStats, formatScoreStats } = require('./scoreStats');
+const { getRankByElo } = require('./EloRank');
 const { getLogs, updateMatchStatus, editLogEmbed } = require('./matchLogger');
 require('dotenv').config();
 
@@ -69,7 +71,11 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   }));
 
   // --- Determine winner from bedbreaker if needed ---
-  let winnerTeam = winner;
+  let winnerTeam = ({ teamA: 'team1', teamB: 'team2', team1: 'team1', team2: 'team2' })[winner];
+  if (winner && !winnerTeam) {
+    console.warn(`[autoConfirmMatch] Invalid winner for ${gameId}: ${winner}`);
+    return;
+  }
   if (!winnerTeam && winBedbreaker) {
     let bedbreakerPlayerId = null;
     
@@ -138,7 +144,9 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
         name: player.username,
         result: isWinner ? '🏆 Win' : '❌ Loss',
         oldElo,
-        newElo: player.elo
+        newElo: player.elo,
+        ...getMatchDisplayStats(options.players, player.ingameUsername || player.username,
+          match.queueType || options.queueType, teams[0].includes(id) ? 'teamA' : 'teamB')
       });
     } catch (err) {
       console.error(`[autoConfirmMatch] Error processing ${id}: ${err.stack}`);
@@ -148,19 +156,19 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   // --- Scoring summary embed ---
   if (scoringChannel) {
     try {
+      const formatPlayerLine = p => {
+        const stats = formatScoreStats(p);
+        const change = p.newElo - p.oldElo;
+        const rank = getRankByElo(p.newElo).name;
+        return `**${p.username}** — K: ${stats.kills} | D: ${stats.deaths} | K/D: ${stats.kd} | Diamonds: ${stats.diamonds} | Emeralds: ${stats.emeralds}\n${rank} • Elo: ${p.oldElo} → ${p.newElo} (${change >= 0 ? '+' : ''}${change})`;
+      };
       const winnerLines = results
         .filter(p => p.result.includes('Win'))
-        .map(p => {
-          const change = p.newElo - p.oldElo;
-          return `🏆 **${p.username}** — ELO: \`${p.oldElo}\` ➝ \`${p.newElo}\` (+${change})`;
-        }).join('\n');
+        .map(formatPlayerLine).join('\n\n');
 
       const loserLines = results
         .filter(p => p.result.includes('Loss'))
-        .map(p => {
-          const change = p.oldElo - p.newElo;
-          return `❌ **${p.username}** — ELO: \`${p.oldElo}\` ➝ \`${p.newElo}\` (-${change})`;
-        }).join('\n');
+        .map(formatPlayerLine).join('\n\n');
 
       const embedData = {
           title: `📊 Game #${gameId} — ELO Summary`,

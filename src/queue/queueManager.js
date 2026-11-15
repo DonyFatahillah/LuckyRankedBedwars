@@ -407,6 +407,9 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
   const hex = generateHexCode();
   const eloQueue = options.eloQueue;
+  // Doubles debug queues override the published queueType (e.g. "2v2_CROSS", "2v2_SIDE")
+  // so the Minecraft plugin knows which map layout / team colors to use.
+  const queueType = eloQueue?.redisQueueType || `${teamSize}v${teamSize}`;
   const usePlayerPicking = eloQueue && eloQueues.isPlayerPicking(eloQueue.voiceChannelId);
   const useArenaPicking = eloQueue && eloQueues.isArenaPicking(eloQueue.voiceChannelId);
 
@@ -443,7 +446,10 @@ async function createMatch(guild, players, teamSize, options = {}) {
   }));
 
   const shuffledGroupData = shuffle([...groupData]);
-  shuffledGroupData.sort((a, b) => compareCaptainPriority(a.bestInstance, b.bestInstance));
+  // Doubles teams are random (party groups remain intact), not premium/Elo seeded.
+  if (!queueType.startsWith('2v2')) {
+    shuffledGroupData.sort((a, b) => compareCaptainPriority(a.bestInstance, b.bestInstance));
+  }
 
   const team1 = [];
   const team2 = [];
@@ -586,7 +592,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
           textChannelId: textChannel.id,
           voiceAId: null, // To be created after picking
           voiceBId: null, // To be created after picking
-          queueType: `${teamSize}v${teamSize}`,
+          queueType,
           map: "TBD", // To be selected after picking
           startedAt: Date.now(),
           status: 'picking',
@@ -642,7 +648,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
           textChannelId: textChannel.id,
           voiceAId: null,
           voiceBId: null,
-          queueType: `${teamSize}v${teamSize}`,
+          queueType,
           map: "TBD",
           startedAt: Date.now(),
           status: 'voting',
@@ -658,7 +664,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
     } else {
       // Normal flow (Neither picking nor arena voting)
-      selectedMap = mapPicker.getRandomMap();
+      selectedMap = mapPicker.getRandomMap(queueType.startsWith('2v2') ? '2v2' : undefined);
       const teamVCs = createdChannels.slice(1);
       await movePlayersToVoiceChannels(guild, teams, teamVCs);
 
@@ -672,7 +678,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
         textChannelId: textChannel.id,
         voiceAId: vcs[0],
         voiceBId: vcs[1],
-        queueType: `${teamSize}v${teamSize}`,
+        queueType,
         map: selectedMap,
         startedAt: Date.now(),
         status: 'pending',
@@ -720,6 +726,7 @@ async function createMatch(guild, players, teamSize, options = {}) {
 
   } catch (err) {
     console.error(`[createMatch] Failed to create match #${hex}:`, err);
+    return;
   } finally {
     // Release player locks after a short delay
     allCandidateIds.forEach(id => {
@@ -745,7 +752,8 @@ async function publishMatchData(guild, hex, matchData) {
       }))
     ]);
 
-    const formattedMap = `w_4_0_${matchData.map.toLowerCase()}`;
+    const mapPrefix = String(matchData.queueType || '').startsWith('2v2') ? 'w_2_0_' : 'w_4_0_';
+    const formattedMap = `${mapPrefix}${matchData.map.toLowerCase()}`;
     await publishMatch({
       matchId: hex,
       queueType: matchData.queueType,
@@ -913,7 +921,7 @@ async function startQueuePolling(client) {
 
         if (members.length === 0) return;
 
-        const expectedCount = type === '3v3' ? 6 : type === '4v4' ? 8 : 2;
+        const expectedCount = type === '3v3' ? 6 : type === '4v4' ? 8 : type === '2v2' ? 4 : 2;
         if (members.length < expectedCount) return;
 
         try {

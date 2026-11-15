@@ -163,6 +163,7 @@ async function handleEloQueue(newState, eloQueue, party = null) {
     const expectedCount =
       eloQueue.type === '3v3' ? 6 :
       eloQueue.type === '4v4' ? 8 :
+      eloQueue.type === '2v2' ? 4 :
       2;
 
     if (validated.length < expectedCount) {

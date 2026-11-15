@@ -12,7 +12,13 @@ const mapPicker = require('./mapPicker');
  * @param {Object} game 
  */
 async function startMapVoting(guild, channel, game) {
-    const maps = mapPicker.getRandomMaps(3);
+    // Doubles matches vote on the maps_2v2 pool instead of the main map list.
+    const mapMode = String(game.queueType || '').startsWith('2v2') ? '2v2' : undefined;
+    const maps = mapPicker.getRandomMaps(3, mapMode);
+    if (maps.length === 0) {
+      await channel.send('⚠️ No doubles maps configured. Add arena names under `maps_2v2` in `data/mapList.yaml`, reload the bot, then restart this match. No match was sent to Minecraft.');
+      return;
+    }
     const mapButtons = maps.map((m, i) => 
       new ButtonBuilder()
         .setCustomId(`map-vote-${game.gameId}-${i}`)
@@ -171,7 +177,8 @@ async function finalizeMatch(guild, channel, game) {
       }))
     ]);
 
-    const formattedMap = `w_4_0_${finalGame.map.toLowerCase()}`;
+    const mapPrefix = String(finalGame.queueType || '').startsWith('2v2') ? 'w_2_0_' : 'w_4_0_';
+    const formattedMap = `${mapPrefix}${finalGame.map.toLowerCase()}`;
     await publishMatch({
       matchId: finalGame.gameId,
       queueType: finalGame.queueType,

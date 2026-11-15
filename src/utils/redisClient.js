@@ -131,7 +131,10 @@ async function setupResultListener(client) {
           winner: data.winner,
           topKiller: data.topKiller,
           winBedbreaker: data.winBedbreaker,
-          loseBedbreaker: data.loseBedbreaker
+          loseBedbreaker: data.loseBedbreaker,
+          queueType: data.queueType,
+          map: data.map,
+          players: data.players
         });
       } 
       

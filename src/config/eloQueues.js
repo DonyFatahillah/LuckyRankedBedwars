@@ -65,6 +65,31 @@ module.exports = [
     isPlayerPicking: true,
     isArenaPicking: true
   },
+  // Debug doubles queues: the plugin reads redisQueueType and maps the teams
+  // (2v2_CROSS = red vs aqua cross-layout map, 2v2_SIDE = red vs blue side-layout map).
+  // Parties stay together, solos are randomized, then everyone votes from maps_2v2.
+  {
+    range: [0, Infinity],
+    type: '2v2',
+    redisQueueType: '2v2_CROSS',
+    minElo: 0,
+    maxElo: Infinity,
+    voiceChannelId: process.env.QUEUE_2V2_CROSS_DEBUG_VOICE_ID,
+    isDebug: true,
+    isPlayerPicking: false,
+    isArenaPicking: true
+  },
+  {
+    range: [0, Infinity],
+    type: '2v2',
+    redisQueueType: '2v2_SIDE',
+    minElo: 0,
+    maxElo: Infinity,
+    voiceChannelId: process.env.QUEUE_2V2_SIDE_DEBUG_VOICE_ID,
+    isDebug: true,
+    isPlayerPicking: false,
+    isArenaPicking: true
+  },
   ];
 
 function isAllRankQueue(channelId) {
