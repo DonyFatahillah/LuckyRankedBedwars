@@ -7,6 +7,10 @@ const playerSchema = new mongoose.Schema({
   losses: { type: Number, default: 0 },
   kills: { type: Number, default: 0 },
   deaths: { type: Number, default: 0 },
+  diamonds: { type: Number, default: 0 },
+  emeralds: { type: Number, default: 0 },
+  iron: { type: Number, default: 0 },
+  gold: { type: Number, default: 0 },
   winstreak: { type: Number, default: 0 },
   mvps: { type: Number, default: 0 },
   bedsBroken: { type: Number, default: 0 },
@@ -27,6 +31,10 @@ const playerSchema = new mongoose.Schema({
   double_losses: { type: Number, default: 0 },
   double_kills: { type: Number, default: 0 },
   double_deaths: { type: Number, default: 0 },
+  double_diamonds: { type: Number, default: 0 },
+  double_emeralds: { type: Number, default: 0 },
+  double_iron: { type: Number, default: 0 },
+  double_gold: { type: Number, default: 0 },
   double_winstreaks: { type: Number, default: 0 },
   double_bedsbroken: { type: Number, default: 0 }
 }, { timestamps: true });

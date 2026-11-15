@@ -23,6 +23,10 @@ class Player {
     this.losses = data.losses ?? 0;
     this.kills = data.kills ?? 0;
     this.deaths = data.deaths ?? 0;
+    this.diamonds = data.diamonds ?? 0;
+    this.emeralds = data.emeralds ?? 0;
+    this.iron = data.iron ?? 0;
+    this.gold = data.gold ?? 0;
     this.winstreak = data.winstreak ?? 0;
     this.topKills = data.mvps ?? 0;
     this.bedsBroken = data.bedsBroken ?? 0;
@@ -38,6 +42,10 @@ class Player {
     this.double_losses = data.double_losses ?? 0;
     this.double_kills = data.double_kills ?? 0;
     this.double_deaths = data.double_deaths ?? 0;
+    this.double_diamonds = data.double_diamonds ?? 0;
+    this.double_emeralds = data.double_emeralds ?? 0;
+    this.double_iron = data.double_iron ?? 0;
+    this.double_gold = data.double_gold ?? 0;
     this.double_winstreaks = data.double_winstreaks ?? 0;
     this.double_bedsbroken = data.double_bedsbroken ?? 0;
 
@@ -61,6 +69,10 @@ class Player {
           losses: doc.losses,
           kills: doc.kills ?? 0,
           deaths: doc.deaths ?? 0,
+          diamonds: doc.diamonds ?? 0,
+          emeralds: doc.emeralds ?? 0,
+          iron: doc.iron ?? 0,
+          gold: doc.gold ?? 0,
           winstreak: doc.winstreak,
           mvps: doc.mvps,
           bedsBroken: doc.bedsBroken,
@@ -78,6 +90,10 @@ class Player {
           double_losses: doc.double_losses ?? 0,
           double_kills: doc.double_kills ?? 0,
           double_deaths: doc.double_deaths ?? 0,
+          double_diamonds: doc.double_diamonds ?? 0,
+          double_emeralds: doc.double_emeralds ?? 0,
+          double_iron: doc.double_iron ?? 0,
+          double_gold: doc.double_gold ?? 0,
           double_winstreaks: doc.double_winstreaks ?? 0,
           double_bedsbroken: doc.double_bedsbroken ?? 0
         };
@@ -89,6 +105,10 @@ class Player {
           losses: 0,
           kills: 0,
           deaths: 0,
+          diamonds: 0,
+          emeralds: 0,
+          iron: 0,
+          gold: 0,
           winstreak: 0,
           mvps: 0,
           bedsBroken: 0,
@@ -106,6 +126,10 @@ class Player {
           double_losses: 0,
           double_kills: 0,
           double_deaths: 0,
+          double_diamonds: 0,
+          double_emeralds: 0,
+          double_iron: 0,
+          double_gold: 0,
           double_winstreaks: 0,
           double_bedsbroken: 0
         };
@@ -299,6 +323,10 @@ class Player {
       losses: this.losses,
       kills: this.kills,
       deaths: this.deaths,
+      diamonds: this.diamonds,
+      emeralds: this.emeralds,
+      iron: this.iron,
+      gold: this.gold,
       winstreak: this.winstreak,
       mvps: this.topKills,
       bedsBroken: this.bedsBroken,
@@ -316,6 +344,10 @@ class Player {
       double_losses: this.double_losses,
       double_kills: this.double_kills,
       double_deaths: this.double_deaths,
+      double_diamonds: this.double_diamonds,
+      double_emeralds: this.double_emeralds,
+      double_iron: this.double_iron,
+      double_gold: this.double_gold,
       double_winstreaks: this.double_winstreaks,
       double_bedsbroken: this.double_bedsbroken
     };
@@ -352,6 +384,10 @@ class Player {
       losses: this.losses,
       kills: this.kills,
       deaths: this.deaths,
+      diamonds: this.diamonds,
+      emeralds: this.emeralds,
+      iron: this.iron,
+      gold: this.gold,
       winstreak: this.winstreak,
       topKills: this.topKills,
       bedsBroken: this.bedsBroken,
@@ -369,6 +405,10 @@ class Player {
       double_losses: this.double_losses,
       double_kills: this.double_kills,
       double_deaths: this.double_deaths,
+      double_diamonds: this.double_diamonds,
+      double_emeralds: this.double_emeralds,
+      double_iron: this.double_iron,
+      double_gold: this.double_gold,
       double_winstreaks: this.double_winstreaks,
       double_bedsbroken: this.double_bedsbroken
     };
