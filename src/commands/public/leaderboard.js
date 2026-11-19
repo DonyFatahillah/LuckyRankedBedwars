@@ -9,7 +9,7 @@ const {
 const fs = require('fs');
 const path = require('path');
 
-const { getRankByElo } = require('../../utils/EloRank');
+const { generateLeaderboardImage } = require('../../utils/leaderboardImage');
 const PlayerModel = require('../../models/PlayerSchema');
 
 const PAGE_SIZE = 10;
@@ -71,6 +71,7 @@ module.exports = {
 
       const validEntries = players.map(p => ({
         userId: p.userId,
+        minecraftUuid: p.minecraftUuid,
         elo: p[stats.elo] || 0,
         username: p.ingameUsername || p.discordUsername || `Unknown (${p.userId.slice(-4)})`,
         wins: p[stats.wins] || 0,
@@ -82,74 +83,85 @@ module.exports = {
 
       const totalPages = Math.ceil(validEntries.length / PAGE_SIZE) || 1;
 
-      // Step 2: Page renderer (uses validEntries)
-      function renderPage(page) {
-        const pageEntries = validEntries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+      const title = `${stats.label} ELO LEADERBOARD${isArchived ? ` - SEASON ${season}` : ''}`;
+      const pageImages = new Map();
 
-        const lines = pageEntries.map((entry, index) => {
-          const rankData = getRankByElo(entry.elo);
-          const rank = rankData ? rankData.name : 'Unknown';
-          return `**${page * PAGE_SIZE + index + 1}.** \`${entry.username}\` — **${entry.elo}** ELO — **${rank}** (W: ${entry.wins} / L: ${entry.losses} | K: ${entry.kills ?? 'N/A'} / D: ${entry.deaths ?? 'N/A'})`;
-        });
-
-        const embed = new EmbedBuilder()
-          .setTitle(`🏆 ${stats.label} ELO LEADERBOARD${isArchived ? ` - SEASON ${season}` : ''}`)
-          .setDescription(lines.join('\n') || '*No players found.*')
-          .setColor(0xFFD700)
-          .setFooter({ text: `Page ${page + 1} of ${totalPages}${isArchived ? ' (Archived Data)' : ''}` })
-          .setTimestamp(new Date());
-
-        const row = new ActionRowBuilder().addComponents(
+      function buildRow(page, disabled = false) {
+        return new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId('prev')
             .setLabel('⬅️ Prev')
             .setStyle(ButtonStyle.Secondary)
-            .setDisabled(page === 0),
+            .setDisabled(disabled || page === 0),
           new ButtonBuilder()
             .setCustomId('next')
             .setLabel('➡️ Next')
             .setStyle(ButtonStyle.Secondary)
-            .setDisabled(page >= totalPages - 1)
+            .setDisabled(disabled || page >= totalPages - 1)
         );
-
-        return { embed, row };
       }
 
-      // Step 3: Send first page
-      let { embed, row } = renderPage(currentPage);
-      const message = await interaction.editReply({ embeds: [embed], components: [row] });
+      async function renderPage(page) {
+        // Cache rendered pages for this message, including their fetched heads.
+        if (!pageImages.has(page)) {
+          pageImages.set(page, generateLeaderboardImage(
+            validEntries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+            { startPosition: page * PAGE_SIZE + 1, title }
+          ).catch(error => {
+            pageImages.delete(page);
+            throw error;
+          }));
+        }
+        const image = await pageImages.get(page);
+        const embed = new EmbedBuilder()
+          .setTitle(`🏆 ${title}`)
+          .setImage('attachment://leaderboard.png')
+          .setColor(0xFFD700)
+          .setFooter({ text: `Page ${page + 1} of ${totalPages}${isArchived ? ' (Archived Data)' : ''}` })
+          .setTimestamp(new Date());
+        return { embed, image };
+      }
+
+      let { embed, image } = await renderPage(currentPage);
+      const message = await interaction.editReply({
+        embeds: [embed], files: [image], components: [buildRow(currentPage)]
+      });
 
       const collector = message.createMessageComponentCollector({
         componentType: ComponentType.Button,
-        time: 60000, // 1 minute idle timeout
+        idle: 60000
       });
 
-      collector.on('collect', async (btn) => {
-        await btn.deferUpdate();
-
-        // Reset idle timeout on every interaction
+      // Serialize edits so rapid clicks or expiry cannot overwrite a newer page.
+      let pendingEdit = Promise.resolve();
+      collector.on('collect', (btn) => {
+        const acknowledged = btn.deferUpdate();
         collector.resetTimer();
+        pendingEdit = pendingEdit.then(async () => {
+          await acknowledged;
+          let nextPage = currentPage;
+          if (btn.customId === 'prev' && nextPage > 0) nextPage--;
+          if (btn.customId === 'next' && nextPage < totalPages - 1) nextPage++;
+          if (nextPage === currentPage) return;
 
-        if (btn.customId === 'prev' && currentPage > 0) currentPage--;
-        if (btn.customId === 'next' && currentPage < totalPages - 1) currentPage++;
-
-        const { embed: newEmbed, row: newRow } = renderPage(currentPage);
-        await message.edit({ embeds: [newEmbed], components: [newRow] }).catch(() => {});
+          const rendered = await renderPage(nextPage);
+          await message.edit({
+            embeds: [rendered.embed], attachments: [], files: [rendered.image],
+            components: [buildRow(nextPage)]
+          });
+          currentPage = nextPage;
+          embed = rendered.embed;
+        }).catch(error => console.error('[Leaderboard] Failed to change page:', error));
+        return pendingEdit;
       });
 
-      collector.on('end', async () => {
-        const { embed: expiredEmbed } = renderPage(currentPage);
-        expiredEmbed.setFooter({ text: `Page ${currentPage + 1} of ${totalPages} • Interaction expired` });
-
-        // Disable buttons after idle timeout
-        const disabledRow = new ActionRowBuilder().addComponents(
-          row.components.map(btn => btn.setDisabled(true))
-        );
-
-        await message.edit({
-          embeds: [expiredEmbed],
-          components: [disabledRow],
-        }).catch(() => {});
+      collector.on('end', () => {
+        pendingEdit = pendingEdit.then(async () => {
+          embed.setFooter({ text: `Page ${currentPage + 1} of ${totalPages}${isArchived ? ' (Archived Data)' : ''} • Interaction expired` });
+          // Keep the current image attachment; only update the footer/buttons.
+          await message.edit({ embeds: [embed], components: [buildRow(currentPage, true)] });
+        }).catch(error => console.error('[Leaderboard] Failed to expire controls:', error));
+        return pendingEdit;
       });
     } catch (error) {
       console.error('[Leaderboard] Error fetching players:', error);

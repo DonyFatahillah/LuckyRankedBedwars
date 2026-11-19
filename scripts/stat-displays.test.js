@@ -118,13 +118,22 @@ async function renderLeaderboard({ mode = 'normal', season = null, players }) {
   let sort;
   let reply;
   const handlers = {};
+  const renders = [];
+  const edits = [];
+  let collectorOptions;
   const message = {
-    createMessageComponentCollector: () => ({ on: (event, handler) => { handlers[event] = handler; }, resetTimer() {} }),
-    edit: async payload => { reply = payload; }
+    createMessageComponentCollector: options => {
+      collectorOptions = options;
+      return { on: (event, handler) => { handlers[event] = handler; }, resetTimer() {} };
+    },
+    edit: async payload => { edits.push(payload); reply = payload; }
   };
   const command = loadCommand('src/commands/public/leaderboard.js', {
     fs: { existsSync: () => true, readFileSync: () => JSON.stringify({ players }) },
-    '../../utils/EloRank': { getRankByElo: () => ({ name: 'Test Rank' }) },
+    '../../utils/leaderboardImage': { generateLeaderboardImage: async (entries, options) => {
+      renders.push({ entries, options });
+      return new discord.AttachmentBuilder(Buffer.from('mock image'), { name: 'leaderboard.png' });
+    } },
     '../../models/PlayerSchema': { find: () => ({ sort: value => {
       sort = value;
       return { lean: async () => players };
@@ -135,7 +144,7 @@ async function renderLeaderboard({ mode = 'normal', season = null, players }) {
     options: { getString: name => name === 'mode' ? mode : season },
     editReply: async payload => { reply = payload; return message; }
   });
-  return { getReply: () => reply, sort, handlers };
+  return { getReply: () => reply, sort, handlers, renders, edits, collectorOptions };
 }
 
 const player = {
@@ -145,28 +154,36 @@ const player = {
 
 for (const mode of ['normal', 'doubles']) {
   test(`leaderboard uses ${mode} stats and retains ELO sorting`, async () => {
-    const { getReply, sort } = await renderLeaderboard({ mode, players: [player] });
+    const { getReply, sort, renders } = await renderLeaderboard({ mode, players: [{ ...player, minecraftUuid: 'test-uuid' }] });
     assert.equal(sort[mode === 'normal' ? 'elo' : 'double_elo'], -1);
-    const description = getReply().embeds[0].toJSON().description;
-    assert.ok(description.includes(mode === 'normal'
-      ? '(W: 3 / L: 1 | K: 12 / D: 5)'
-      : '(W: 2 / L: 4 | K: 9 / D: 6)'));
+    const entry = renders[0].entries[0];
+    assert.deepEqual([entry.elo, entry.wins, entry.losses, entry.kills, entry.deaths],
+      mode === 'normal' ? [100, 3, 1, 12, 5] : [200, 2, 4, 9, 6]);
+    assert.equal(entry.minecraftUuid, 'test-uuid');
+    assert.equal(renders[0].options.startPosition, 1);
+    assert.match(renders[0].options.title, mode === 'normal' ? /NORMAL/ : /DOUBLES/);
+    assert.equal(getReply().embeds[0].toJSON().image.url, 'attachment://leaderboard.png');
+    assert.equal(getReply().files[0].name, 'leaderboard.png');
   });
 }
 
 test('live leaderboard defaults missing combat fields to zero', async () => {
-  const { getReply } = await renderLeaderboard({ players: [{ userId: '1234' }] });
-  assert.match(getReply().embeds[0].toJSON().description, /K: 0 \/ D: 0/);
+  const { renders } = await renderLeaderboard({ players: [{ userId: '1234' }] });
+  assert.equal(renders[0].entries[0].kills, 0);
+  assert.equal(renders[0].entries[0].deaths, 0);
 });
 
 test('archived leaderboard distinguishes missing data from recorded zero', async () => {
-  const { getReply } = await renderLeaderboard({ season: 'S1', players: [
-    { userId: '1234', ingameUsername: 'Legacy', elo: 20 },
-    { userId: '5678', ingameUsername: 'Recorded', elo: 10, kills: 0, deaths: 0 }
+  const { renders } = await renderLeaderboard({ season: 'S1', players: [
+    { userId: '5678', ingameUsername: 'Recorded', elo: 10, kills: 0, deaths: 0 },
+    { userId: '1234', ingameUsername: 'Legacy', elo: 20 }
   ] });
-  const description = getReply().embeds[0].toJSON().description;
-  assert.match(description, /Legacy.*K: N\/A \/ D: N\/A/);
-  assert.match(description, /Recorded.*K: 0 \/ D: 0/);
+  assert.equal(renders[0].entries[0].username, 'Legacy');
+  assert.equal(renders[0].entries[0].kills, null);
+  assert.equal(renders[0].entries[0].deaths, null);
+  assert.equal(renders[0].entries[1].kills, 0);
+  assert.equal(renders[0].entries[1].deaths, 0);
+  assert.match(renders[0].options.title, /SEASON S1/);
 });
 
 test('old archives still reject doubles when doubles ELO is absent', async () => {
@@ -176,11 +193,21 @@ test('old archives still reject doubles when doubles ELO is absent', async () =>
 
 test('leaderboard pagination and expiry preserve combat stats', async () => {
   const players = Array.from({ length: 11 }, (_, index) => ({ ...player, userId: String(index), ingameUsername: `Player${index}` }));
-  const { getReply, handlers } = await renderLeaderboard({ players });
+  const { getReply, handlers, renders, collectorOptions } = await renderLeaderboard({ players });
+  assert.equal(collectorOptions.idle, 60000);
   await handlers.collect({ customId: 'next', deferUpdate: async () => {} });
-  assert.match(getReply().embeds[0].toJSON().description, /Player10.*K: 12 \/ D: 5/);
+  assert.equal(renders[1].entries[0].username, 'Player10');
+  assert.equal(renders[1].entries[0].kills, 12);
+  assert.equal(renders[1].entries[0].deaths, 5);
+  assert.equal(renders[1].options.startPosition, 11);
+  assert.equal(getReply().attachments.length, 0, 'old image is replaced, not accumulated');
+  assert.equal(getReply().files.length, 1);
+  await handlers.collect({ customId: 'prev', deferUpdate: async () => {} });
+  assert.equal(renders.length, 2, 'revisited page uses cached image');
   await handlers.end();
   const reply = getReply();
-  assert.match(reply.embeds[0].toJSON().footer.text, /Interaction expired/);
+  assert.match(reply.embeds[0].toJSON().footer.text, /Page 1 of 2.*Interaction expired/);
+  assert.equal(reply.files, undefined, 'expiry preserves existing attachment without rerendering');
+  assert.equal(reply.attachments, undefined);
   assert.ok(reply.components[0].toJSON().components.every(button => button.disabled));
 });
