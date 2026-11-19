@@ -162,8 +162,10 @@ for (const mode of ['normal', 'doubles']) {
     assert.equal(entry.minecraftUuid, 'test-uuid');
     assert.equal(renders[0].options.startPosition, 1);
     assert.match(renders[0].options.title, mode === 'normal' ? /NORMAL/ : /DOUBLES/);
-    assert.equal(getReply().embeds[0].toJSON().image.url, 'attachment://leaderboard.png');
+    assert.equal(getReply().embeds, undefined, 'leaderboard is a standalone image');
+    assert.equal(getReply().content, undefined);
     assert.equal(getReply().files[0].name, 'leaderboard.png');
+    assert.deepEqual(getReply().components[0].toJSON().components.map(button => button.label), ['<-', '->']);
   });
 }
 
@@ -202,11 +204,13 @@ test('leaderboard pagination and expiry preserve combat stats', async () => {
   assert.equal(renders[1].options.startPosition, 11);
   assert.equal(getReply().attachments.length, 0, 'old image is replaced, not accumulated');
   assert.equal(getReply().files.length, 1);
+  assert.equal(getReply().embeds, undefined);
   await handlers.collect({ customId: 'prev', deferUpdate: async () => {} });
   assert.equal(renders.length, 2, 'revisited page uses cached image');
   await handlers.end();
   const reply = getReply();
-  assert.match(reply.embeds[0].toJSON().footer.text, /Page 1 of 2.*Interaction expired/);
+  assert.equal(reply.embeds, undefined);
+  assert.equal(reply.content, undefined);
   assert.equal(reply.files, undefined, 'expiry preserves existing attachment without rerendering');
   assert.equal(reply.attachments, undefined);
   assert.ok(reply.components[0].toJSON().components.every(button => button.disabled));

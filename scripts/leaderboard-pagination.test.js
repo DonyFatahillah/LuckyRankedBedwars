@@ -39,8 +39,12 @@ test('rapid next clicks are serialized and retain overall positions', async () =
   const { click, edits, rendered } = await harness();
   await Promise.all([click('next'), click('next')]);
   assert.deepEqual(rendered, [1, 11, 21]);
-  assert.match(edits[0].embeds[0].toJSON().footer.text, /Page 2 of 3/);
-  assert.match(edits[1].embeds[0].toJSON().footer.text, /Page 3 of 3/);
+  for (const edit of edits) {
+    assert.equal(edit.embeds, undefined);
+    assert.equal(edit.files[0].name, 'leaderboard.png');
+    assert.equal(edit.attachments.length, 0);
+  }
+  assert.equal(edits[0].components[0].toJSON().components[1].disabled, false);
   assert.equal(edits[1].components[0].toJSON().components[1].disabled, true);
 });
 
@@ -52,7 +56,9 @@ test('expiry waits for pending navigation and preserves the final image', async 
   await handlers.end();
   await navigating;
   const last = edits[edits.length - 1];
-  assert.match(last.embeds[0].toJSON().footer.text, /Page 2 of 3.*Interaction expired/);
+  assert.equal(edits.length, 2, 'navigation completes before controls are disabled');
+  assert.equal(last.embeds, undefined);
+  assert.equal(last.content, undefined);
   assert.ok(last.components[0].toJSON().components.every(button => button.disabled));
   assert.equal(last.files, undefined);
   assert.equal(last.attachments, undefined);

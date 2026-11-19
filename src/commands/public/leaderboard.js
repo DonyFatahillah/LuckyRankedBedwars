@@ -3,7 +3,6 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
   ComponentType,
 } = require('discord.js');
 const fs = require('fs');
@@ -90,12 +89,12 @@ module.exports = {
         return new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId('prev')
-            .setLabel('⬅️ Prev')
+            .setLabel('<-')
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(disabled || page === 0),
           new ButtonBuilder()
             .setCustomId('next')
-            .setLabel('➡️ Next')
+            .setLabel('->')
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(disabled || page >= totalPages - 1)
         );
@@ -112,19 +111,12 @@ module.exports = {
             throw error;
           }));
         }
-        const image = await pageImages.get(page);
-        const embed = new EmbedBuilder()
-          .setTitle(`🏆 ${title}`)
-          .setImage('attachment://leaderboard.png')
-          .setColor(0xFFD700)
-          .setFooter({ text: `Page ${page + 1} of ${totalPages}${isArchived ? ' (Archived Data)' : ''}` })
-          .setTimestamp(new Date());
-        return { embed, image };
+        return pageImages.get(page);
       }
 
-      let { embed, image } = await renderPage(currentPage);
+      const image = await renderPage(currentPage);
       const message = await interaction.editReply({
-        embeds: [embed], files: [image], components: [buildRow(currentPage)]
+        files: [image], components: [buildRow(currentPage)]
       });
 
       const collector = message.createMessageComponentCollector({
@@ -144,22 +136,19 @@ module.exports = {
           if (btn.customId === 'next' && nextPage < totalPages - 1) nextPage++;
           if (nextPage === currentPage) return;
 
-          const rendered = await renderPage(nextPage);
+          const image = await renderPage(nextPage);
           await message.edit({
-            embeds: [rendered.embed], attachments: [], files: [rendered.image],
-            components: [buildRow(nextPage)]
+            attachments: [], files: [image], components: [buildRow(nextPage)]
           });
           currentPage = nextPage;
-          embed = rendered.embed;
         }).catch(error => console.error('[Leaderboard] Failed to change page:', error));
         return pendingEdit;
       });
 
       collector.on('end', () => {
         pendingEdit = pendingEdit.then(async () => {
-          embed.setFooter({ text: `Page ${currentPage + 1} of ${totalPages}${isArchived ? ' (Archived Data)' : ''} • Interaction expired` });
-          // Keep the current image attachment; only update the footer/buttons.
-          await message.edit({ embeds: [embed], components: [buildRow(currentPage, true)] });
+          // Keep the current image attachment and only disable the buttons.
+          await message.edit({ components: [buildRow(currentPage, true)] });
         }).catch(error => console.error('[Leaderboard] Failed to expire controls:', error));
         return pendingEdit;
       });
