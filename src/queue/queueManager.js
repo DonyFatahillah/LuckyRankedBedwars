@@ -770,7 +770,7 @@ async function publishMatchData(guild, hex, matchData) {
 // Rules
 // -------------------------
 function getRulesForMatchType(teamSize) {
-  if (teamSize === 3 || teamSize === 4) {
+  if (teamSize === 2 || teamSize === 3 || teamSize === 4) {
     const section = _queueRules[`${teamSize}v${teamSize}`];
     if (!section) return fallbackRules(teamSize);
 

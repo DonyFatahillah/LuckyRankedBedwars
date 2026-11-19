@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const Player = require('../../models/Player');
 const PlayerModel = require('../../models/PlayerSchema');
 const { generateProfileImage } = require('../../utils/profileImage');
@@ -17,6 +17,15 @@ module.exports = {
       option.setName('username')
         .setDescription('The Minecraft username to view')
         .setRequired(false)
+    )
+    .addStringOption(option =>
+      option.setName('mode')
+        .setDescription('Stats to view (defaults to Normal: 3v3 / 4v4)')
+        .addChoices(
+          { name: 'Normal (3v3 / 4v4)', value: 'normal' },
+          { name: 'Doubles (2v2 SIDE / CROSS)', value: 'doubles' }
+        )
+        .setRequired(false)
     ),
 
   async execute(interaction) {
@@ -24,6 +33,7 @@ module.exports = {
 
     const targetUser = interaction.options.getUser('user');
     const minecraftUsername = interaction.options.getString('username');
+    const mode = interaction.options.getString('mode') || 'normal';
     const guild = interaction.guild;
     const verifiedRoleId = process.env.VERIFIED_ROLE_ID || '1401289452633985086';
 
@@ -63,10 +73,11 @@ module.exports = {
       }
     }
 
-    let stats, mcName;
+    let stats, mcName, source;
 
     if (playerData) {
       // ✅ Use MongoDB data as the primary source of truth
+      source = playerData;
       stats = {
         elo: playerData.elo ?? 0,
         wins: playerData.wins ?? 0,
@@ -83,35 +94,34 @@ module.exports = {
     } else if (member) {
       // ✅ Fallback if no DB entry yet but member exists
       const player = await Player.load(member);
-      stats = { ...player.getStats(), elo: player.elo };
+      source = player.getStats();
+      stats = { ...source, elo: player.elo };
       const baseName = player.ingameUsername || player.discordUsername;
       mcName = baseName;
     } else {
       return interaction.editReply({ content: '❌ Unable to find that user data' });
     }
 
-    // Keep the normal/doubles summary alongside the normal-mode profile card.
-    const combatData = playerData || stats;
-    const combatFields = [
-      { name: 'Normal (3v3 / 4v4)', kills: combatData.kills ?? 0, deaths: combatData.deaths ?? 0 },
-      { name: 'Doubles (2v2)', kills: combatData.double_kills ?? 0, deaths: combatData.double_deaths ?? 0 }
-    ].map(({ name, kills, deaths }) => ({
-      name,
-      value: `Kills: **${kills}**\nDeaths: **${deaths}**\nK/D: **${(deaths === 0 ? kills : kills / deaths).toFixed(2)}**`,
-      inline: true
-    }));
-    const combatEmbed = new EmbedBuilder()
-      .setTitle('Combat stats')
-      .setColor(0xFFD700)
-      .addFields(combatFields)
-      .setFooter({ text: 'K/D uses kills when deaths are 0. MVPs are separate from kills.' });
+    if (mode === 'doubles') {
+      stats = {
+        elo: source.double_elo ?? 0,
+        wins: source.double_wins ?? 0,
+        losses: source.double_losses ?? 0,
+        kills: source.double_kills ?? 0,
+        deaths: source.double_deaths ?? 0,
+        winstreak: source.double_winstreaks ?? 0,
+        bedsBroken: source.double_bedsbroken ?? 0,
+        // The database does not track separate doubles MVPs or recent games.
+        topKills: 'N/A',
+        recentlyPlayed: source.recentlyPlayed ?? []
+      };
+    }
 
     const attachment = await generateProfileImage(mcName, stats);
     attachment.setName('profile.png');
 
     await interaction.editReply({
-      content: `📜 Profile of **${mcName}**`,
-      embeds: [combatEmbed],
+      content: `📜 Profile of **${mcName}**${mode === 'doubles' ? ' — Doubles (2v2 SIDE / CROSS) • MVPs: not tracked • Recent games: all modes' : ''}`,
       files: [attachment]
     });
   }

@@ -25,7 +25,7 @@ function loadCommand(relativePath, mocks) {
   return context.module.exports;
 }
 
-async function renderProfile(playerData, fallbackStats = {}) {
+async function renderProfile(playerData, fallbackStats = {}, { mode = null, username = null, targetUser = null } = {}) {
   const drawn = [];
   const drawingContext = {
     drawImage() {},
@@ -58,24 +58,22 @@ async function renderProfile(playerData, fallbackStats = {}) {
   let reply;
   await command.execute({
     deferReply: async () => {},
-    options: { getUser: () => null, getString: () => null },
+    options: { getUser: () => targetUser, getString: name => name === 'mode' ? mode : username },
     user: { id: '1234' },
     guild: { members: { fetch: async () => member } },
     editReply: async payload => { reply = payload; }
   });
-  return { embed: reply.embeds[0].toJSON(), drawn, reply, playerLoads };
+  return { drawn, reply, playerLoads };
 }
 
-test('profile displays both modes and keeps MVPs separate from actual kills', async () => {
-  const { embed, drawn, reply, playerLoads } = await renderProfile({
+test('profile sends the canvas without a combat embed and keeps MVPs separate from kills', async () => {
+  const { drawn, reply, playerLoads } = await renderProfile({
     ingameUsername: 'Test', elo: 100, wins: 2, losses: 1, mvps: 7,
     kills: 12, deaths: 5, double_kills: 9, double_deaths: 0,
     bedsBroken: 4, winstreak: 2, recentlyPlayed: ['ABC', 'DEF']
   });
-  assert.equal(embed.fields[0].name, 'Normal (3v3 / 4v4)');
-  assert.equal(embed.fields[0].value, 'Kills: **12**\nDeaths: **5**\nK/D: **2.40**');
-  assert.equal(embed.fields[1].name, 'Doubles (2v2)');
-  assert.equal(embed.fields[1].value, 'Kills: **9**\nDeaths: **0**\nK/D: **9.00**');
+  assert.equal(reply.embeds, undefined);
+  assert.equal(reply.content, '📜 Profile of **Test**');
   const at = (x, y) => drawn.find(item => item.x === x && item.y === y)?.value;
   assert.equal(at(1330, 382), '7');
   assert.equal(at(1135, 185), '12');
@@ -93,25 +91,94 @@ test('profile displays both modes and keeps MVPs separate from actual kills', as
 });
 
 test('profile defaults missing combat fields to zero', async () => {
-  const { embed } = await renderProfile({ ingameUsername: 'Legacy' });
-  for (const field of embed.fields) {
-    assert.equal(field.value, 'Kills: **0**\nDeaths: **0**\nK/D: **0.00**');
-  }
+  const { drawn, reply } = await renderProfile({ ingameUsername: 'Legacy' });
+  const at = (x, y) => drawn.find(item => item.x === x && item.y === y)?.value;
+  assert.equal(at(1135, 185), '0');
+  assert.equal(at(1330, 185), '0');
+  assert.equal(at(940, 382), '0.00');
+  assert.equal(reply.embeds, undefined);
 });
 
 test('profile uses Player.getStats combat fields on fallback', async () => {
-  const { embed, drawn, playerLoads } = await renderProfile(null, {
+  const { drawn, reply, playerLoads } = await renderProfile(null, {
     wins: 0, losses: 0, kills: 3, deaths: 2, double_kills: 8, double_deaths: 4,
     topKills: 6, bedsBroken: 5, winstreak: 1, recentlyPlayed: ['FALLBACK']
   });
-  assert.match(embed.fields[0].value, /K\/D: \*\*1.50\*\*/);
-  assert.match(embed.fields[1].value, /K\/D: \*\*2.00\*\*/);
+  assert.equal(reply.embeds, undefined);
   const at = (x, y) => drawn.find(item => item.x === x && item.y === y)?.value;
   assert.equal(at(265, 214), '100');
   assert.equal(at(1135, 185), '3');
+  assert.equal(at(940, 382), '1.50');
   assert.equal(at(1330, 382), '6');
   assert.equal(at(670, 545), 'Game #FALLBACK');
   assert.equal(playerLoads, 1);
+});
+
+test('profile offers normal and doubles mode choices', () => {
+  const command = loadCommand('src/commands/misc/profile.js', {
+    '../../models/Player': {}, '../../models/PlayerSchema': {},
+    '../../utils/profileImage': {}, dotenv: { config() {} }
+  });
+  const option = command.data.toJSON().options.find(option => option.name === 'mode');
+  assert.equal(option.required, false);
+  assert.deepEqual(option.choices.map(choice => choice.value), ['normal', 'doubles']);
+});
+
+const modeStats = {
+  ingameUsername: 'Test', elo: 900, wins: 50, losses: 20, kills: 400, deaths: 100,
+  mvps: 99, bedsBroken: 30, winstreak: 8, recentlyPlayed: ['SHARED'],
+  double_elo: 500, double_wins: 12, double_losses: 3, double_kills: 90,
+  double_deaths: 30, double_bedsbroken: 7, double_winstreaks: 4
+};
+
+for (const lookup of [{ targetUser: { id: '5678' } }, { username: 'Test' }]) {
+  test(`doubles profile maps independent stats for ${lookup.username ? 'Minecraft' : 'Discord'} lookup`, async () => {
+    const { drawn, reply } = await renderProfile(modeStats, {}, { ...lookup, mode: 'doubles' });
+    const at = (x, y) => drawn.find(item => item.x === x && item.y === y)?.value;
+    assert.equal(at(265, 214), '500');
+    assert.equal(at(740, 185), '12');
+    assert.equal(at(940, 185), '3');
+    assert.equal(at(1135, 185), '90');
+    assert.equal(at(1330, 185), '30');
+    assert.equal(at(740, 382), '4.00');
+    assert.equal(at(940, 382), '3.00');
+    assert.equal(at(1135, 382), '7');
+    assert.equal(at(1330, 382), 'N/A');
+    assert.equal(at(1270, 565), '4');
+    assert.equal(at(1270, 749), '15');
+    assert.equal(at(670, 545), 'Game #SHARED');
+    assert.match(reply.content, /Doubles.*Recent games: all modes/);
+    assert.equal(reply.embeds, undefined);
+  });
+}
+
+test('omitted and explicit normal modes both use normal stats', async () => {
+  for (const mode of [null, 'normal']) {
+    const { drawn } = await renderProfile(modeStats, {}, { mode });
+    const at = (x, y) => drawn.find(item => item.x === x && item.y === y)?.value;
+    assert.equal(at(265, 214), '900');
+    assert.equal(at(1135, 185), '400');
+    assert.equal(at(1330, 382), '99');
+  }
+});
+
+test('doubles profile uses cached Player stats on fallback', async () => {
+  const { drawn, playerLoads } = await renderProfile(null, modeStats, { mode: 'doubles' });
+  const at = (x, y) => drawn.find(item => item.x === x && item.y === y)?.value;
+  assert.equal(at(265, 214), '500');
+  assert.equal(at(1135, 185), '90');
+  assert.equal(at(1135, 382), '7');
+  assert.equal(playerLoads, 1);
+});
+
+test('legacy doubles profiles default to zero without using normal totals', async () => {
+  const { drawn } = await renderProfile({ ingameUsername: 'Legacy', elo: 900, wins: 20, kills: 100 }, {}, { mode: 'doubles' });
+  const at = (x, y) => drawn.find(item => item.x === x && item.y === y)?.value;
+  assert.equal(at(265, 214), '0');
+  assert.equal(at(740, 185), '0');
+  assert.equal(at(1135, 185), '0');
+  assert.equal(at(940, 382), '0.00');
+  assert.equal(at(1330, 382), 'N/A');
 });
 
 async function renderLeaderboard({ mode = 'normal', season = null, players }) {

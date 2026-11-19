@@ -47,11 +47,12 @@ function buildRulesEmbed(gamemode, rules) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('queuerules')
-    .setDescription('View the current season queue rules (3v3 or 4v4)')
+    .setDescription('View the current season queue rules (2v2, 3v3, or 4v4)')
     .addStringOption(option =>
       option.setName('mode')
         .setDescription('Select the gamemode rules to view (Defaults to 4v4)')
         .addChoices(
+          { name: '2v2 (SIDE / CROSS)', value: '2v2' },
           { name: '3v3', value: '3v3' },
           { name: '4v4', value: '4v4' }
         )

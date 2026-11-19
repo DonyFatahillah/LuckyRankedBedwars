@@ -67,7 +67,7 @@ test('queue2v2 requires four players and forwards the layout config', async () =
 });
 
 function createMatchHarness({ picking = false, arena = picking, party = false } = {}) {
-  const captured = { published: [], saved: [], logs: [], voting: [] };
+  const captured = { published: [], saved: [], logs: [], voting: [], messages: [] };
   const members = ['p1', 'p2', 'p3', 'p4'].map(id => ({
     id, user: { username: id }, displayName: id,
     guild: { roles: { everyone: { id: 'everyone' } } },
@@ -76,12 +76,12 @@ function createMatchHarness({ picking = false, arena = picking, party = false } 
   }));
   let nextChannel = 0;
   const guild = {
-    channels: { create: async () => ({ id: `ch${++nextChannel}`, send: async () => {} }) },
+    channels: { create: async () => ({ id: `ch${++nextChannel}`, send: async payload => { captured.messages.push(payload); } }) },
     members: { fetch: async id => members.find(m => m.id === id) }
   };
   const queues = { isPlayerPicking: () => picking, isArenaPicking: () => arena };
   const manager = loadModule('src/queue/queueManager.js', {
-    fs: { readFileSync: () => '{}' },
+    fs: { readFileSync: () => fs.readFileSync(path.join(__dirname, '../data/queueRules.yaml'), 'utf8') },
     '../utils/mapPicker': { getRandomMap: () => 'TestMap' },
     '../models/ActiveGameSchema': {},
     '../utils/matchLogger': {
@@ -116,6 +116,8 @@ for (const layout of ['2v2_CROSS', '2v2_SIDE']) {
     assert.equal(game.unpickedPlayers.length, 2);
     assert.equal(game.isArenaPicking, true);
     assert.equal(captured.published.length, 0);
+    assert.equal(game.rules.format, '2v2');
+    assert.match(game.rules.rulesEmbed, /Diamond Armor \(only 1\)/);
   });
 
   test(`${layout} survives the non-picking publish path`, async () => {
@@ -125,6 +127,10 @@ for (const layout of ['2v2_CROSS', '2v2_SIDE']) {
     assert.equal(captured.published[0].teamA.length, 2);
     assert.equal(captured.published[0].teamB.length, 2);
     assert.equal(captured.published[0].map, 'w_2_0_testmap');
+    const rulesText = captured.messages.find(message => message.embeds)?.embeds[0].description;
+    assert.match(rulesText, /Diamond Armor \(only 1\)/);
+    assert.match(rulesText, /After Diamond II/);
+    assert.match(rulesText, /Iron Golems/);
   });
 }
 
