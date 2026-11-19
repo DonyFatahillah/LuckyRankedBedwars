@@ -32,19 +32,28 @@ async function renderProfile(playerData, fallbackStats = {}) {
     fillText(value, x, y) { drawn.push({ value, x, y }); }
   };
   const member = { user: { username: 'Test' }, roles: { cache: new Set(['1401289452633985086']) } };
-  const command = loadCommand('src/commands/misc/profile.js', {
+  const profileImage = loadCommand('src/utils/profileImage.js', {
     canvas: {
       registerFont() {},
-      loadImage: async () => ({}),
-      createCanvas: () => ({ getContext: () => drawingContext, toBuffer: () => Buffer.from('mock image') })
+      loadImage: async () => ({ width: 150, height: 300 }),
+      createCanvas: (width, height) => {
+        assert.equal(width, 1600);
+        assert.equal(height, 900);
+        return { getContext: () => drawingContext, toBuffer: () => Buffer.from('mock image') };
+      }
     },
     axios: { get: async () => ({ data: Buffer.alloc(0) }) },
+    './EloRank': { getRankByElo: () => ({ name: 'Test Rank' }) }
+  });
+  let playerLoads = 0;
+  const command = loadCommand('src/commands/misc/profile.js', {
+    '../../utils/profileImage': profileImage,
     dotenv: { config() {} },
     '../../models/PlayerSchema': { findOne: async () => playerData },
-    '../../models/Player': { load: async () => ({
-      elo: 100, ingameUsername: 'Fallback', getStats: () => fallbackStats
-    }) },
-    '../../utils/EloRank': { getRankByElo: () => ({ name: 'Test Rank' }) }
+    '../../models/Player': { load: async () => {
+      playerLoads++;
+      return { elo: 100, ingameUsername: 'Fallback', getStats: () => fallbackStats };
+    } }
   });
   let reply;
   await command.execute({
@@ -54,20 +63,33 @@ async function renderProfile(playerData, fallbackStats = {}) {
     guild: { members: { fetch: async () => member } },
     editReply: async payload => { reply = payload; }
   });
-  return { embed: reply.embeds[0].toJSON(), drawn, reply };
+  return { embed: reply.embeds[0].toJSON(), drawn, reply, playerLoads };
 }
 
 test('profile displays both modes and keeps MVPs separate from actual kills', async () => {
-  const { embed, drawn, reply } = await renderProfile({
+  const { embed, drawn, reply, playerLoads } = await renderProfile({
     ingameUsername: 'Test', elo: 100, wins: 2, losses: 1, mvps: 7,
-    kills: 12, deaths: 5, double_kills: 9, double_deaths: 0
+    kills: 12, deaths: 5, double_kills: 9, double_deaths: 0,
+    bedsBroken: 4, winstreak: 2, recentlyPlayed: ['ABC', 'DEF']
   });
   assert.equal(embed.fields[0].name, 'Normal (3v3 / 4v4)');
   assert.equal(embed.fields[0].value, 'Kills: **12**\nDeaths: **5**\nK/D: **2.40**');
   assert.equal(embed.fields[1].name, 'Doubles (2v2)');
   assert.equal(embed.fields[1].value, 'Kills: **9**\nDeaths: **0**\nK/D: **9.00**');
-  assert.equal(drawn.find(item => item.x === 863 && item.y === 410).value, '7');
+  const at = (x, y) => drawn.find(item => item.x === x && item.y === y)?.value;
+  assert.equal(at(1330, 382), '7');
+  assert.equal(at(1135, 185), '12');
+  assert.equal(at(1330, 185), '5');
+  assert.equal(at(740, 382), '2.00');
+  assert.equal(at(940, 382), '2.40');
+  assert.equal(at(1135, 382), '4');
+  assert.equal(at(1270, 565), '2');
+  assert.equal(at(1270, 749), '3');
+  assert.equal(at(670, 545), 'Game #ABC');
+  assert.equal(at(670, 596), 'Game #DEF');
+  assert.equal(playerLoads, 0, 'Mongo profiles do not require Redis or another Player.load');
   assert.equal(reply.files.length, 1);
+  assert.equal(reply.files[0].name, 'profile.png');
 });
 
 test('profile defaults missing combat fields to zero', async () => {
@@ -78,11 +100,18 @@ test('profile defaults missing combat fields to zero', async () => {
 });
 
 test('profile uses Player.getStats combat fields on fallback', async () => {
-  const { embed } = await renderProfile(null, {
-    wins: 0, losses: 0, kills: 3, deaths: 2, double_kills: 8, double_deaths: 4
+  const { embed, drawn, playerLoads } = await renderProfile(null, {
+    wins: 0, losses: 0, kills: 3, deaths: 2, double_kills: 8, double_deaths: 4,
+    topKills: 6, bedsBroken: 5, winstreak: 1, recentlyPlayed: ['FALLBACK']
   });
   assert.match(embed.fields[0].value, /K\/D: \*\*1.50\*\*/);
   assert.match(embed.fields[1].value, /K\/D: \*\*2.00\*\*/);
+  const at = (x, y) => drawn.find(item => item.x === x && item.y === y)?.value;
+  assert.equal(at(265, 214), '100');
+  assert.equal(at(1135, 185), '3');
+  assert.equal(at(1330, 382), '6');
+  assert.equal(at(670, 545), 'Game #FALLBACK');
+  assert.equal(playerLoads, 1);
 });
 
 async function renderLeaderboard({ mode = 'normal', season = null, players }) {

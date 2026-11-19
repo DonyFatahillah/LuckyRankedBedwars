@@ -1,16 +1,8 @@
-const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require('discord.js');
-const { createCanvas, loadImage, registerFont } = require('canvas');
-const axios = require('axios');
-const path = require('path');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const Player = require('../../models/Player');
 const PlayerModel = require('../../models/PlayerSchema');
-const { getRankByElo } = require('../../utils/EloRank');
+const { generateProfileImage } = require('../../utils/profileImage');
 require('dotenv').config();
-
-// ✅ Register custom font
-registerFont(path.join(__dirname, '../../../assets/PlusJakartaSans-Bold.ttf'), {
-  family: 'PlusJakarta',
-});
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -71,35 +63,34 @@ module.exports = {
       }
     }
 
-    let stats, rank, mcName, elo;
+    let stats, mcName;
 
     if (playerData) {
       // ✅ Use MongoDB data as the primary source of truth
-      elo = playerData.elo || 0;
       stats = {
-        wins: playerData.wins || 0,
-        losses: playerData.losses || 0,
-        winstreak: playerData.winstreak || 0,
-        topKills: playerData.mvps || 0,
-        bedsBroken: playerData.bedsBroken || 0,
-        wlr: playerData.losses === 0 ? (playerData.wins || 0) : ((playerData.wins || 0) / playerData.losses).toFixed(2),
+        elo: playerData.elo ?? 0,
+        wins: playerData.wins ?? 0,
+        losses: playerData.losses ?? 0,
+        kills: playerData.kills ?? 0,
+        deaths: playerData.deaths ?? 0,
+        winstreak: playerData.winstreak ?? 0,
+        topKills: playerData.mvps ?? 0,
+        bedsBroken: playerData.bedsBroken ?? 0,
+        recentlyPlayed: playerData.recentlyPlayed ?? []
       };
-      rank = getRankByElo(elo);
       const baseName = playerData.ingameUsername || playerData.discordUsername || (member ? member.user.username : 'Unknown');
       mcName = baseName;
     } else if (member) {
       // ✅ Fallback if no DB entry yet but member exists
       const player = await Player.load(member);
-      stats = player.getStats();
-      rank = getRankByElo(player.elo);
+      stats = { ...player.getStats(), elo: player.elo };
       const baseName = player.ingameUsername || player.discordUsername;
       mcName = baseName;
-      elo = player.elo;
     } else {
       return interaction.editReply({ content: '❌ Unable to find that user data' });
     }
 
-    // Keep MVP counts on the existing card; actual kills/deaths are separate stats.
+    // Keep the normal/doubles summary alongside the normal-mode profile card.
     const combatData = playerData || stats;
     const combatFields = [
       { name: 'Normal (3v3 / 4v4)', kills: combatData.kills ?? 0, deaths: combatData.deaths ?? 0 },
@@ -115,56 +106,8 @@ module.exports = {
       .addFields(combatFields)
       .setFooter({ text: 'K/D uses kills when deaths are 0. MVPs are separate from kills.' });
 
-    const playerObj = member ? await Player.load(member) : null;
-    const skinRenderUrl = (playerData?.ingameUsername || playerObj?.ingameUsername) 
-      ? `https://mc-heads.net/body/${playerData?.ingameUsername || playerObj.ingameUsername}/300`
-      : `https://mc-heads.net/body/Steve/300`;
-
-    // Load assets (background + skin)
-    const [templateImg, skinImg] = await Promise.all([
-      loadImage(path.join(__dirname, '../../../assets/profile_canvas.png')),
-      axios.get(skinRenderUrl, { responseType: 'arraybuffer' })
-        .then(res => loadImage(res.data))
-        .catch(() => null)
-    ]);
-
-    const canvas = createCanvas(1365, 768);
-    const ctx = canvas.getContext('2d');
-
-    // Draw background
-    ctx.drawImage(templateImg, 0, 0, 1365, 768);
-
-    // Username (top of profile)
-    ctx.font = 'bold 30px "PlusJakarta"';
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.fillText(mcName, 548, 83);
-
-    // Minecraft skin (body)
-    if (skinImg) {
-      ctx.drawImage(skinImg, 465, 175, 175, 400);
-    }
-
-    // Text drawing helper
-    const write = (text, x, y, size = 28, align = 'center') => {
-      ctx.font = `bold ${size}px "PlusJakarta"`;
-      ctx.textAlign = align;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(String(text ?? 0), x, y);
-    };
-
-    // Right-side stats
-    write(rank.name, 900, 210, 50);          // Rank name
-    write(elo, 858, 296, 29, 'left');       // ELO
-    write(stats.topKills, 863, 410, 35);     // MVP count (not actual kills)
-    write(stats.wins, 1037, 410, 35);        // Wins
-    write(stats.bedsBroken, 863, 530, 35);   // Beds Broken
-    write(stats.losses, 1037, 530, 35);      // Losses
-    write(stats.wlr, 863, 650, 35);          // WLR
-    write(stats.wins + stats.losses, 1037, 650, 35); // Total games
-
-    const buffer = canvas.toBuffer('image/png');
-    const attachment = new AttachmentBuilder(buffer, { name: 'profile.png' });
+    const attachment = await generateProfileImage(mcName, stats);
+    attachment.setName('profile.png');
 
     await interaction.editReply({
       content: `📜 Profile of **${mcName}**`,
