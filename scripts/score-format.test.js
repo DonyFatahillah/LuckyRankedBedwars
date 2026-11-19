@@ -87,11 +87,16 @@ test('image uses scoring_canvas.png and overlays stats, signed Elo changes, and 
 });
 
 for (const count of [1, 2, 3, 4]) {
-  test(`template centers ${count} players per team inside their panels`, async () => {
+  test(`template aligns ${count} players per team to fixed grid rows`, async () => {
     const names = [];
+    const drawn = [];
+    const images = [];
     const ctx = {
-      fillRect() {}, drawImage() {}, measureText: () => ({ width: 100 }),
-      fillText(value, x, y) { if (String(value).startsWith('Player')) names.push({ value, x, y }); }
+      fillRect() {}, drawImage: (...args) => images.push(args), measureText: () => ({ width: 100 }),
+      fillText(value, x, y) {
+        drawn.push({ value: String(value), x, y });
+        if (String(value).startsWith('Player')) names.push({ value, x, y });
+      }
     };
     const image = load('src/utils/scoreImage.js', {
       canvas: { registerFont() {}, loadImage: async () => ({}), createCanvas: () => ({ getContext: () => ctx, toBuffer: () => Buffer.from('png') }) },
@@ -102,13 +107,25 @@ for (const count of [1, 2, 3, 4]) {
     const results = Array.from({ length: count * 2 }, (_, i) => ({
       username: `Player${i}`, result: i < count ? 'Win' : 'Loss', oldElo: 100, newElo: 125
     }));
-    await image.generateScoreImage('ABC', 'team1', results, [], [], []);
+    await image.generateScoreImage('ABC', 'team1', results, ['Player0'], ['Player0'], []);
     assert.equal(names.length, count * 2);
     for (const [offset, top] of [[0, 95], [count, 502]]) {
       const team = names.slice(offset, offset + count);
-      assert.equal((team[0].y + team[count - 1].y) / 2, top + 168);
-      for (const row of team) assert.ok(row.y > top && row.y < top + 336);
+      team.forEach((row, i) => {
+        const middle = top + i * 84 + 42;
+        assert.equal(row.y, middle);
+        for (const x of [548, 664, 780, 876, 958, 1110]) {
+          assert.ok(drawn.some(text => text.x === x && text.y === middle), `column ${x} shares row center`);
+        }
+        assert.ok(drawn.some(text => text.x === 1350 && text.y === middle - 13));
+        assert.ok(drawn.some(text => text.x === 1350 && text.y === middle + 17));
+      });
     }
+    const heads = images.filter(args => args.length === 5 && args[1] === 123);
+    assert.deepEqual(heads.map(args => args[2] + 26), names.map(row => row.y));
+    const badges = images.filter(args => args.length === 9);
+    assert.equal(badges.length, 2);
+    for (const badge of badges) assert.equal(badge[6] + 12.5, names[0].y);
   });
 }
 

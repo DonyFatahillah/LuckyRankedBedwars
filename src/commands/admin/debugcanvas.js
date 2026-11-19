@@ -7,7 +7,7 @@ module.exports = {
     .setDescription('Generate a dummy score image to test canvas positions')
     .addStringOption(option =>
       option.setName('mode')
-        .setDescription('Select the team size to test layout centering')
+        .setDescription('Select the team size to test grid row alignment')
         .setRequired(false)
         .addChoices(
           { name: '1v1', value: '1v1' },

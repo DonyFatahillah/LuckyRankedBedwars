@@ -40,12 +40,11 @@ async function generateScoreImage(gameId, winningTeam, results, mvp, winBedbreak
   }
 
   async function drawTeam(players, panelTop) {
-    // The template has four 84px rows per team. Center smaller teams in the panel.
-    const slotHeight = Math.min(rowHeight, 336 / Math.max(1, players.length));
-    const startY = panelTop + (336 - players.length * slotHeight) / 2;
+    // Use the template's fixed rows for every team size. Panel-centering small
+    // teams puts odd-sized rosters on stripe boundaries instead of row centers.
     for (const [index, player] of players.entries()) {
-      const y = startY + index * slotHeight;
-      const middle = y + slotHeight / 2;
+      const y = panelTop + index * rowHeight;
+      const middle = y + rowHeight / 2;
       const username = player.username || player.nickname || player.name || 'Unknown';
       try {
         const avatar = await loadImage(`https://mc-heads.net/avatar/${encodeURIComponent(player.name || username)}/52`);
