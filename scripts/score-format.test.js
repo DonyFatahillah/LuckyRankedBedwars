@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const test = require('node:test');
-const { getMatchDisplayStats, formatScoreStats } = require('../src/utils/scoreStats');
+const { getMatchStats, getMatchDisplayStats, formatScoreStats } = require('../src/utils/scoreStats');
 
 function load(relative, mocks) {
   const filename = path.join(__dirname, '..', relative);
@@ -43,11 +43,19 @@ test('K/D has two decimals, zero deaths uses kills, absent or invalid stats are 
   }
 });
 
-test('image draws every requested column, signed Elo changes, and legacy N/A', async () => {
+test('image uses scoring_canvas.png and overlays stats, signed Elo changes, and legacy N/A', async () => {
   const drawn = [];
-  const ctx = { fillRect() {}, drawImage() {}, fillText: value => drawn.push(String(value)) };
+  const images = [];
+  const dimensions = [];
+  const ctx = { fillRect() {}, drawImage: (...args) => images.push(args), fillText: value => drawn.push(String(value)) };
   const image = load('src/utils/scoreImage.js', {
-    canvas: { registerFont() {}, loadImage: async () => ({}), createCanvas: () => ({ getContext: () => ctx, toBuffer: () => Buffer.from('png') }) },
+    canvas: {
+      registerFont() {}, loadImage: async source => ({ source }),
+      createCanvas: (width, height) => {
+        dimensions.push([width, height]);
+        return { getContext: () => ctx, toBuffer: () => Buffer.from('png') };
+      }
+    },
     'discord.js': { AttachmentBuilder: class { constructor(buffer, options) { this.name = options.name; } } },
     './EloRank': { getRankByElo: () => ({ name: 'TestRank' }) },
     './scoreStats': { formatScoreStats }
@@ -56,12 +64,41 @@ test('image draws every requested column, signed Elo changes, and legacy N/A', a
     { username: 'PlayerOne', name: 'PlayerOne', result: 'Win', oldElo: 100, newElo: 125, kills: 8, deaths: 3, diamonds: 12, emeralds: 6 },
     { nickname: 'LegacyPlayer', result: 'Loss', oldElo: 100, newElo: 105 }
   ], ['PlayerOne'], [], [], 'Archway');
-  for (const expected of ['PLAYER', 'KILLS', 'DEATHS', 'K/D', 'DIAMONDS', 'EMERALDS', 'RANK', 'ELO CHANGE',
-    'PlayerOne', '8', '3', '2.67', '12', '6', 'TestRank', '(+25)', '(+5)', 'N/A', 'MVP']) {
+  assert.deepEqual(dimensions, [[1600, 900]]);
+  assert.equal(images[0][0].source, path.join(__dirname, '../assets/scoring_canvas.png'));
+  assert.deepEqual(images[0].slice(1), [0, 0, 1600, 900]);
+  assert.equal(drawn.includes('KILLS'), false, 'column headers are already part of the template');
+  for (const expected of ['PlayerOne', '8', '3', '2.67', '12', '6', 'TestRank', '(+25)', '(+5)', 'N/A', 'MVP']) {
     assert.ok(drawn.includes(expected), expected);
   }
   assert.equal(attachment.name, 'score-ABC.png');
 });
+
+for (const count of [1, 2, 3, 4]) {
+  test(`template centers ${count} players per team inside their panels`, async () => {
+    const names = [];
+    const ctx = {
+      fillRect() {}, drawImage() {},
+      fillText(value, x, y) { if (String(value).startsWith('Player')) names.push({ value, x, y }); }
+    };
+    const image = load('src/utils/scoreImage.js', {
+      canvas: { registerFont() {}, loadImage: async () => ({}), createCanvas: () => ({ getContext: () => ctx, toBuffer: () => Buffer.from('png') }) },
+      'discord.js': { AttachmentBuilder: class {} },
+      './EloRank': { getRankByElo: () => ({ name: 'TestRank' }) },
+      './scoreStats': { formatScoreStats }
+    });
+    const results = Array.from({ length: count * 2 }, (_, i) => ({
+      username: `Player${i}`, result: i < count ? 'Win' : 'Loss', oldElo: 100, newElo: 125
+    }));
+    await image.generateScoreImage('ABC', 'team1', results, [], [], []);
+    assert.equal(names.length, count * 2);
+    for (const [offset, top] of [[0, 95], [count, 502]]) {
+      const team = names.slice(offset, offset + count);
+      assert.equal((team[0].y + team[count - 1].y) / 2, top + 168);
+      for (const row of team) assert.ok(row.y > top && row.y < top + 336);
+    }
+  });
+}
 
 for (const mode of ['4v4', '2v2_SIDE', '2v2_CROSS']) {
   test(`auto-confirm passes ${mode} match stats to the image and normalizes teamA winner`, async () => {
@@ -69,7 +106,7 @@ for (const mode of ['4v4', '2v2_SIDE', '2v2_CROSS']) {
     const players = new Map(['One', 'Two'].map((name, i) => [String(i), {
       username: name, ingameUsername: name, elo: 100,
       win: async function () { this.elo += 25; }, lose: async function () { this.elo -= 10; },
-      addTopKill: async () => {}, addBedBroken: async () => {}, addRecentGame() {}, save: async () => {}
+      addMatchStats() {}, addTopKill: async () => {}, addBedBroken: async () => {}, addRecentGame() {}, save: async () => {}
     }]));
     const autoConfirm = load('src/utils/autoConfirmMatch.js', {
       '../queue/queueManager': {
@@ -79,7 +116,7 @@ for (const mode of ['4v4', '2v2_SIDE', '2v2_CROSS']) {
       '../models/Player': { load: async member => players.get(member.id) },
       '../config/eloQueues': { isAllRankQueue: () => false },
       './matchLogger': { getLogs: () => ({}), updateMatchStatus: async () => {}, editLogEmbed: async () => {} },
-      './scoreStats': { getMatchDisplayStats, formatScoreStats },
+      './scoreStats': { getMatchStats, formatScoreStats },
       './EloRank': { getRankByElo: () => ({ name: 'TestRank' }) },
       './scoreImage': { generateScoreImage: async (id, winner, results) => { imageResults = results; return {}; } }
     });

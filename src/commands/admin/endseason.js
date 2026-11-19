@@ -109,7 +109,7 @@ module.exports = {
       await interaction.editReply({ content: '✅ Season ended successfully.', embeds: [embed] });
 
       // 6. Final Reset (Perform ONLY after reporting to ensure data integrity)
-      await PlayerModel.updateMany({}, { $set: { elo: 0, wins: 0, losses: 0, winstreak: 0, mvps: 0, bedsBroken: 0 } });
+      await PlayerModel.updateMany({}, { $set: { elo: 0, wins: 0, losses: 0, winstreak: 0, mvps: 0, bedsBroken: 0, double_bedsbroken: 0 } });
       await MatchLogModel.deleteMany({});
 
       try {

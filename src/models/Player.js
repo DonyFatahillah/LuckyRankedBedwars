@@ -238,13 +238,24 @@ class Player {
     await this.save();
   }
 
+  // Apply validated per-match counts; the caller persists them with the result.
+  addMatchStats(stats, isDoubles = false) {
+    const prefix = isDoubles ? 'double_' : '';
+    for (const field of ['kills', 'deaths', 'diamonds', 'emeralds', 'iron', 'gold']) {
+      const count = stats?.[field];
+      if (!Number.isSafeInteger(count) || count < 0) continue;
+      this[`${prefix}${field}`] += count;
+    }
+  }
+
   async addTopKill() {
     this.topKills += 1;
     await this.save();
   }
 
-  async addBedBroken() {
+  async addBedBroken(isDoubles = false) {
     this.bedsBroken += 1;
+    if (isDoubles) this.double_bedsbroken += 1;
     await this.save();
   }
 

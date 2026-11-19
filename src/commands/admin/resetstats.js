@@ -21,7 +21,7 @@ module.exports = {
       // 1. Reset in Database
       await PlayerModel.findOneAndUpdate(
         { userId: target.id },
-        { $set: { wins: 0, losses: 0, winstreak: 0, mvps: 0, bedsBroken: 0 } }
+        { $set: { wins: 0, losses: 0, winstreak: 0, mvps: 0, bedsBroken: 0, double_bedsbroken: 0 } }
       );
 
       // 2. Clear Redis Cache
@@ -34,6 +34,7 @@ module.exports = {
       player.winstreak = 0;
       player.topKills = 0;
       player.bedsBroken = 0;
+      player.double_bedsbroken = 0;
       await player.save();
 
       await interaction.editReply(`✅ Statistics for ${target.displayName} have been reset.`);

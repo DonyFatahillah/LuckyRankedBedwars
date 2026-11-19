@@ -27,6 +27,7 @@ module.exports = {
           winstreak: 0,
           mvps: 0,
           bedsBroken: 0,
+          double_bedsbroken: 0,
           elo: 0,
           recentlyPlayed: []
         }

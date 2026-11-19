@@ -27,9 +27,9 @@ module.exports = {
       // Dummy data for testing
       const gameId = '12345';
       const winningTeam = 'team1';
-      const mvp = 'Molfordan, Player3';
-      const winBedbreaker = 'Molfordan';
-      const loseBedbreaker = 'Player5';
+      const mvp = count >= 3 ? ['Molfordan', 'Player3'] : ['Molfordan'];
+      const winBedbreaker = ['Molfordan'];
+      const loseBedbreaker = ['HitRate'];
 
       const allWinners = [
         { nickname: 'Molfordan', oldElo: 1000, newElo: 1025, result: '🏆 Win', team: 'team1', name: 'Molfordan' },
@@ -56,7 +56,7 @@ module.exports = {
         }));
 
       // Call the image generator
-      const attachment = await generateScoreImage(gameId, winningTeam, results, mvp, winBedbreaker, loseBedbreaker);
+      const attachment = await generateScoreImage(gameId, winningTeam, results, mvp, winBedbreaker, loseBedbreaker, 'Archway');
 
       // Send it
       await interaction.editReply({

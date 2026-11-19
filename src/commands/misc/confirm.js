@@ -153,6 +153,7 @@ module.exports = {
       const winners = winningTeam === 'team1' ? team1 : team2;
       const losers = winningTeam === 'team1' ? team2 : team1;
       const allPlayerIds = [...winners, ...losers];
+      const isDoubles = String(match.queueType || '').startsWith('2v2');
 
       let topKillerDisplayNames = topKillerUsernameRaw ? topKillerUsernameRaw.split(',').map(s => s.trim()) : [];
       let winBedbreakerDisplayName = winBedbreakerUsername;
@@ -186,7 +187,7 @@ module.exports = {
         }
 
         if (isTopKiller) await player.addTopKill();
-        if (isWinBreaker || isLoseBreaker) await player.addBedBroken();
+        if (isWinBreaker || isLoseBreaker) await player.addBedBroken(isDoubles);
 
         await player.addRecentGame(gameId);
         await player.save();

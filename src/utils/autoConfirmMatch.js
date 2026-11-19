@@ -1,7 +1,7 @@
 const { getActiveGames, deleteActiveGame } = require('../queue/queueManager');
 const Player = require('../models/Player');
 const { isAllRankQueue } = require('../config/eloQueues');
-const { getMatchDisplayStats, formatScoreStats } = require('./scoreStats');
+const { getMatchStats, formatScoreStats } = require('./scoreStats');
 const { getRankByElo } = require('./EloRank');
 const { getLogs, updateMatchStatus, editLogEmbed } = require('./matchLogger');
 require('dotenv').config();
@@ -60,6 +60,8 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
   }
 
   const isAllRank = isAllRankQueue(match.voiceChannelId);
+  const queueType = match.queueType || options.queueType;
+  const isDoubles = String(queueType || '').startsWith('2v2');
   const scoringChannel = await guild.channels.fetch(SCORING_CHANNEL_ID).catch(() => null);
   const allPlayerIds = [...teams[0], ...teams[1]];
   
@@ -126,6 +128,10 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
       if (isWinBreaker) winBedUsername = player.username;
       if (isLoseBreaker) loseBedUsername = player.username;
 
+      const matchStats = getMatchStats(options.players, player.ingameUsername || player.username,
+        queueType, teams[0].includes(id) ? 'teamA' : 'teamB');
+      player.addMatchStats(matchStats, isDoubles);
+
       if (isWinner) {
         await player.win(gameId, isTopKiller, isWinBreaker);
       } else {
@@ -133,7 +139,7 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
       }
 
       if (isTopKiller) await player.addTopKill();
-      if (isWinBreaker || isLoseBreaker) await player.addBedBroken();
+      if (isWinBreaker || isLoseBreaker) await player.addBedBroken(isDoubles);
 
       await player.addRecentGame(gameId);
       await player.save();
@@ -145,8 +151,7 @@ module.exports = async function autoConfirmMatch(client, guild, gameId, options)
         result: isWinner ? '🏆 Win' : '❌ Loss',
         oldElo,
         newElo: player.elo,
-        ...getMatchDisplayStats(options.players, player.ingameUsername || player.username,
-          match.queueType || options.queueType, teams[0].includes(id) ? 'teamA' : 'teamB')
+        ...matchStats
       });
     } catch (err) {
       console.error(`[autoConfirmMatch] Error processing ${id}: ${err.stack}`);

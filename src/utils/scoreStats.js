@@ -1,3 +1,4 @@
+const MATCH_STATS = ['kills', 'deaths', 'diamonds', 'emeralds', 'iron', 'gold'];
 const DISPLAY_STATS = ['kills', 'deaths', 'diamonds', 'emeralds'];
 
 function validCount(value) {
@@ -5,13 +6,18 @@ function validCount(value) {
 }
 
 // Match totals only. Missing values must not look like recorded zeroes.
-function getMatchDisplayStats(players, ign, queueType, expectedTeam) {
+function getMatchStats(players, ign, queueType, expectedTeam) {
   const matches = Array.isArray(players) ? players.filter(p =>
     typeof p?.ign === 'string' && p.ign.toLowerCase() === String(ign).toLowerCase()
   ) : [];
   const report = matches.length === 1 && (!matches[0].team || matches[0].team === expectedTeam) ? matches[0] : null;
   const prefix = String(queueType || '').startsWith('2v2') ? 'doubles_' : '';
-  return Object.fromEntries(DISPLAY_STATS.map(field => [field, validCount(report?.[`${prefix}${field}`])]));
+  return Object.fromEntries(MATCH_STATS.map(field => [field, validCount(report?.[`${prefix}${field}`])]));
+}
+
+function getMatchDisplayStats(players, ign, queueType, expectedTeam) {
+  const stats = getMatchStats(players, ign, queueType, expectedTeam);
+  return Object.fromEntries(DISPLAY_STATS.map(field => [field, stats[field]]));
 }
 
 function formatScoreStats(stats) {
@@ -24,4 +30,4 @@ function formatScoreStats(stats) {
   };
 }
 
-module.exports = { getMatchDisplayStats, formatScoreStats };
+module.exports = { getMatchStats, getMatchDisplayStats, formatScoreStats };

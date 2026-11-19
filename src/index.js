@@ -5,6 +5,7 @@
   const fs = require('fs');
   const path = require('path');
   const addBedBrokenField = require('./scripts/addBedBreakField');
+  const addDoubleBedBreakField = require('./scripts/addDoubleBedBreakField');
   const migrateDoubleStats = require('./scripts/migrateDoubleStats');
   const migrateKillDeathStats = require('./scripts/migrateKillDeathStats');
   const migrateResourceStats = require('./scripts/migrateResourceStats');
@@ -52,6 +53,7 @@
 
     await loadParties();
     addBedBrokenField();
+    addDoubleBedBreakField();
     await cleanMatchLogs();
     await loadActiveGames();
     await loadLogs();
