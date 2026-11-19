@@ -14,7 +14,11 @@ async function generateScoreImage(gameId, winningTeam, results, mvp, winBedbreak
   const rowHeight = 84;
   const winners = results.filter(p => p.result.includes('Win'));
   const losers = results.filter(p => p.result.includes('Loss'));
-  const background = await loadImage(path.join(__dirname, '../../assets/scoring_canvas.png'));
+  const [background, mvpBadge, bedBadge] = await Promise.all([
+    loadImage(path.join(__dirname, '../../assets/scoring_canvas.png')),
+    loadImage(path.join(__dirname, '../../assets/mvp_logo.png')),
+    loadImage(path.join(__dirname, '../../assets/bed_logo.png'))
+  ]);
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
   ctx.drawImage(background, 0, 0, width, height);
@@ -51,10 +55,21 @@ async function generateScoreImage(gameId, winningTeam, results, mvp, winBedbreak
         ctx.fillRect(123, middle - 26, 52, 52);
       }
       const badges = [];
-      if (contains(mvp, username)) badges.push('MVP');
-      if (contains(winBedbreaker, username) || contains(loseBedbreaker, username)) badges.push('BEDBREAKER');
-      text(username, 190, middle - (badges.length ? 10 : 0), 24, '#ffffff', 'left', 310);
-      if (badges.length) text(badges.join(' • '), 190, middle + 20, 14, '#ffdc72', 'left', 310);
+      if (contains(mvp, username)) badges.push(mvpBadge);
+      if (contains(winBedbreaker, username) || contains(loseBedbreaker, username)) badges.push(bedBadge);
+      const badgeWidth = 75;
+      const badgeHeight = 25;
+      const badgeGap = 6;
+      const nameWidth = 310 - badges.length * (badgeWidth + badgeGap);
+      text(username, 190, middle, 24, '#ffffff', 'left', nameWidth);
+      const renderedNameWidth = Math.min(ctx.measureText(username).width, nameWidth);
+      let badgeX = 190 + renderedNameWidth + badgeGap;
+      for (const badge of badges) {
+        // Both 1080px assets include transparent padding around the pill.
+        // Crop to the visible badge so its height matches the player name.
+        ctx.drawImage(badge, 33, 371, 1014, 338, badgeX, middle - badgeHeight / 2, badgeWidth, badgeHeight);
+        badgeX += badgeWidth + badgeGap;
+      }
 
       const stats = formatScoreStats(player);
       for (const [key, x] of [['kills', 548], ['deaths', 664], ['kd', 780], ['diamonds', 876], ['emeralds', 958]]) {

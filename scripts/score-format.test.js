@@ -47,7 +47,9 @@ test('image uses scoring_canvas.png and overlays stats, signed Elo changes, and 
   const drawn = [];
   const images = [];
   const dimensions = [];
-  const ctx = { fillRect() {}, drawImage: (...args) => images.push(args), fillText: value => drawn.push(String(value)) };
+  const ctx = { fillRect() {}, drawImage: (...args) => images.push(args),
+    measureText: value => ({ width: String(value).length * 14 }),
+    fillText: value => drawn.push(String(value)) };
   const image = load('src/utils/scoreImage.js', {
     canvas: {
       registerFont() {}, loadImage: async source => ({ source }),
@@ -63,12 +65,22 @@ test('image uses scoring_canvas.png and overlays stats, signed Elo changes, and 
   const attachment = await image.generateScoreImage('ABC', 'team1', [
     { username: 'PlayerOne', name: 'PlayerOne', result: 'Win', oldElo: 100, newElo: 125, kills: 8, deaths: 3, diamonds: 12, emeralds: 6 },
     { nickname: 'LegacyPlayer', result: 'Loss', oldElo: 100, newElo: 105 }
-  ], ['PlayerOne'], [], [], 'Archway');
+  ], ['PlayerOne'], ['PlayerOne'], ['LegacyPlayer'], 'Archway');
   assert.deepEqual(dimensions, [[1600, 900]]);
   assert.equal(images[0][0].source, path.join(__dirname, '../assets/scoring_canvas.png'));
   assert.deepEqual(images[0].slice(1), [0, 0, 1600, 900]);
   assert.equal(drawn.includes('KILLS'), false, 'column headers are already part of the template');
-  for (const expected of ['PlayerOne', '8', '3', '2.67', '12', '6', 'TestRank', '(+25)', '(+5)', 'N/A', 'MVP']) {
+  const badges = images.filter(args => args.length === 9);
+  assert.deepEqual(badges.map(args => path.basename(args[0].source)), ['mvp_logo.png', 'bed_logo.png', 'bed_logo.png']);
+  for (const badge of badges) {
+    assert.deepEqual(badge.slice(1, 5), [33, 371, 1014, 338], 'transparent padding is cropped');
+    assert.deepEqual(badge.slice(7), [75, 25]);
+    assert.ok(badge[5] >= 190 && badge[5] + badge[7] <= 500, 'badge stays inside player column');
+  }
+  assert.equal(badges[1][5] - badges[0][5], 81, 'dual badges have a gap');
+  assert.equal(drawn.includes('MVP'), false);
+  assert.equal(drawn.includes('BEDBREAKER'), false);
+  for (const expected of ['PlayerOne', '8', '3', '2.67', '12', '6', 'TestRank', '(+25)', '(+5)', 'N/A']) {
     assert.ok(drawn.includes(expected), expected);
   }
   assert.equal(attachment.name, 'score-ABC.png');
@@ -78,7 +90,7 @@ for (const count of [1, 2, 3, 4]) {
   test(`template centers ${count} players per team inside their panels`, async () => {
     const names = [];
     const ctx = {
-      fillRect() {}, drawImage() {},
+      fillRect() {}, drawImage() {}, measureText: () => ({ width: 100 }),
       fillText(value, x, y) { if (String(value).startsWith('Player')) names.push({ value, x, y }); }
     };
     const image = load('src/utils/scoreImage.js', {
