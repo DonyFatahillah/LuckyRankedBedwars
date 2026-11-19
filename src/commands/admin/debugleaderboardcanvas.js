@@ -20,7 +20,7 @@ module.exports = {
       }));
       const attachment = await generateLeaderboardImage(entries, { title: 'NORMAL (3v3 / 4v4) ELO LEADERBOARD' });
       await interaction.editReply({
-        content: '🛠️ **Leaderboard Canvas Debug**\nDummy stats only. Top 3: gold, silver, and bronze. Edit `src/utils/leaderboardImage.js` and run `/debugleaderboardcanvas` again to preview changes.',
+        content: '🛠️ **Leaderboard Canvas Debug**\nDummy stats only. Top 3: diamond, gold, and bronze. Edit `src/utils/leaderboardImage.js` and run `/debugleaderboardcanvas` again to preview changes.',
         files: [attachment]
       });
     } catch (err) {

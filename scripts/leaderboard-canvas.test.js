@@ -19,26 +19,37 @@ function load(relative, mocks) {
   return context.module.exports;
 }
 
-function renderer() {
+function renderer({ headFails = false, decodeFails = false } = {}) {
   const text = [];
   const images = [];
+  const requests = [];
+  const placeholders = [];
   const ctx = {
     drawImage: (...args) => images.push(args),
+    fillRect: (...args) => placeholders.push(args),
     fillText(value, x, y, maxWidth) { text.push({ value, x, y, maxWidth, color: this.fillStyle }); }
   };
   const module = load('src/utils/leaderboardImage.js', {
     canvas: {
-      registerFont() {}, loadImage: async source => ({ source }),
+      registerFont() {}, loadImage: async source => {
+        if (decodeFails && String(source).startsWith('https:')) throw new Error('invalid image');
+        return { source };
+      },
       createCanvas(width, height) {
         assert.equal(width, 1600);
         assert.equal(height, 900);
         return { getContext: () => ctx, toBuffer: () => Buffer.from('png') };
       }
     },
+    axios: { get: async (url, options) => {
+      requests.push({ url, options });
+      if (headFails) throw new Error('offline');
+      return { data: url };
+    } },
     'discord.js': { AttachmentBuilder: class { constructor(buffer, options) { this.name = options.name; } } },
     './EloRank': { getRankByElo: () => ({ name: 'Amethyst' }) }
   });
-  return { ...module, text, images };
+  return { ...module, text, images, requests, placeholders };
 }
 
 const entries = Array.from({ length: 11 }, (_, i) => ({
@@ -53,7 +64,7 @@ test('leaderboard uses the supplied template, ten rows and distinct podium color
   assert.deepEqual(images[0].slice(1), [0, 0, 1600, 900]);
   const names = text.filter(item => item.value.startsWith('Player'));
   assert.equal(names.length, 10);
-  assert.deepEqual(names.slice(0, 4).map(item => item.color), ['#FFD966', '#E6EDF7', '#FFBE98', '#ffffff']);
+  assert.deepEqual(names.slice(0, 4).map(item => item.color), ['#78D8FF', '#FFD966', '#FFBE98', '#ffffff']);
   assert.equal(names[0].y, 177.5);
   assert.equal(names[9].y, 762.5);
   const at = x => text.find(item => item.x === x && item.y === 177.5)?.value;
@@ -64,6 +75,40 @@ test('leaderboard uses the supplied template, ten rows and distinct podium color
   assert.equal(at(1252), '200');
   assert.equal(at(1410), 'Amethyst');
 });
+
+test('fetches only visible heads and places each just before its username', async () => {
+  const { generateLeaderboardImage, text, images, requests } = renderer();
+  await generateLeaderboardImage(entries);
+  assert.equal(requests.length, 10);
+  assert.equal(images.length, 11);
+  for (let i = 0; i < 10; i++) {
+    assert.equal(requests[i].url, `https://mc-heads.net/avatar/Player${i + 1}/40`);
+    assert.equal(requests[i].options.timeout, 5000);
+    assert.equal(requests[i].options.responseType, 'arraybuffer');
+    const head = images[i + 1];
+    const name = text.find(item => item.value === `Player${i + 1}`);
+    assert.deepEqual(head.slice(1), [247, name.y - 20, 40, 40]);
+    assert.equal(name.x, 300);
+    assert.equal(name.maxWidth, 397);
+  }
+});
+
+test('head lookup prefers UUID and URL-encodes the identity', async () => {
+  const { generateLeaderboardImage, requests } = renderer();
+  await generateLeaderboardImage([{ username: 'Alice', minecraftUuid: 'uuid' }, { username: 'A B' }]);
+  assert.equal(requests[0].url, 'https://mc-heads.net/avatar/uuid/40');
+  assert.equal(requests[1].url, 'https://mc-heads.net/avatar/A%20B/40');
+});
+
+for (const failure of [{ headFails: true }, { decodeFails: true }]) {
+  test(`unavailable heads do not prevent rendering (${Object.keys(failure)[0]})`, async () => {
+    const { generateLeaderboardImage, images, placeholders, text } = renderer(failure);
+    await generateLeaderboardImage(entries.slice(0, 2));
+    assert.equal(images.length, 1);
+    assert.equal(placeholders.length, 2);
+    assert.ok(text.some(item => item.value === 'Player1'));
+  });
+}
 
 test('later pages do not receive podium colors', async () => {
   const { generateLeaderboardImage, text } = renderer();
@@ -109,7 +154,7 @@ test('debug command sends ten sorted dummy players without accessing player data
   assert.equal(cmd.data.toJSON().name, 'debugleaderboardcanvas');
   await cmd.execute({ deferReply: async () => {}, editReply: async value => { reply = value; } });
   assert.equal(reply.files[0].name, 'leaderboard.png');
-  assert.match(reply.content, /gold, silver, and bronze/);
+  assert.match(reply.content, /diamond, gold, and bronze/);
 });
 
 test('debug command reports renderer errors', async () => {
